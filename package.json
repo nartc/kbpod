@@ -9,7 +9,7 @@
     ],
     "scripts": {
         "typecheck": "tsc -p packages/api/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p tsconfig.json",
-        "lint": "biome lint .",
+        "lint": "oxlint --ignore-path .gitignore .",
         "format:check": "oxfmt --check .",
         "format": "oxfmt --write .",
         "test": "bun test",
@@ -25,10 +25,10 @@
         "@effect/platform-node": "4.0.3"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.15",
         "@types/bun": "1.4.2",
         "cf": "1.0.0-beta.14",
         "oxfmt": "0.73.0",
+        "oxlint": "1.88.0",
         "typescript": "7.0.2"
     }
 }

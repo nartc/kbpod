@@ -16,6 +16,19 @@
 
 Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held after Chau selected Fix first. The project now has normal unit tests and one direct Bun/native Alchemy integration suite, with local/cloud targets. The custom supervisor, incident recovery, credential/state audit and smoke CLI have been removed from reusable code. Current offline checks pass; the simplified integration suite has not been run and does not inherit runtime proof from `fbfd9ce`. Dated sections below describe earlier implementations and consumed commands, not current tooling or standing authority.
 
+## 2026-10-13 — S-2: switch from Biome to oxlint
+
+Chau explicitly requested oxlint (hubseq85). Exact-pinned official **oxlint1.88.0**, verified from npm's current release, its `oxc-project/oxc` repository, installed package metadata, CLI help/schema and official GitHub configuration documentation. No global install, custom lint runner, JS plugin framework or type-aware companion was added. The existing three TypeScript projects still own typechecking.
+
+- `bun run lint` now runs `oxlint --ignore-path .gitignore .`, preserving Git ignore handling alongside explicit config exclusions. Removed `@biomejs/biome` and `biome.json`. Oxfmt0.73.0/four spaces/100 columns and all application/test TypeScript are unchanged.
+- Native correctness rules are errors, suspicious rules are warnings, with explicit common policies for unused variables/imports, loose equality, const preference, type imports, explicit any, non-null assertions and duplicate imports. This is a meaningful JS/TS baseline, **not a claim of identical Biome rule coverage**.
+- Native `no-restricted-imports` uses the same API/Worker globs and host-adapter patterns. Thirty-four offline comparisons matched Biome, including static/type imports, re-exports, dynamic imports, nested adapter paths and host-test allowances.
+- Both engines share existing pattern gaps: bare `fs`, `node:fs/promises` and `require()` were not blocked by the prior rule. The migration does not weaken or silently broaden that policy, nor claim it is a complete runtime sandbox.
+- **Known coverage difference:** oxlint does not lint JSON. A duplicate-key JSON probe failed under Biome, while oxlint excluded that file type. Oxfmt still parses/formats JSON, but that is not duplicate-key or other semantic JSON lint. No extra framework was added to emulate the old engine.
+- Synthetic debugger, duplicate-object-key and loose-equality probes fail; explicit-any and non-null probes warn. Invalid TypeScript under ignored state/operational/generated folders stays excluded. Probes are removed.
+- Frozen install, oxlint, oxfmt, all three typechecks and **42 unit tests/zero failures** pass. Dependency changes are limited to removing Biome and adding oxlint/platform bindings. Historical receipt/brief hashes stay unchanged.
+- The direct integration suite remains **unrun**. Actual native proof is still `fbfd9ce`, not this tooling commit. No cloud operation, new independent reviewer or publishing is authorized.
+
 ## 2026-10-13 — direct Bun unit and integration tests
 
 Chau clarified apps/packages/tests, normal unit tests and integration tests. Local/cloud are targets of one integration suite, not three suites or a mandatory per-commit matrix. Fix first on the976e0f5 guide and hubseq82–84 authorize this simplification, not cloud execution or publishing.

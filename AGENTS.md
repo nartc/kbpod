@@ -8,8 +8,8 @@ Bun 1.4.2 workspaces, TypeScript, Effect 4; no Nx. Exact dependency pins and `bu
 
 - `bun install --frozen-lockfile` — reproducible install.
 - `bun run typecheck` — neutral API, Worker and Bun-tooling projects, no emit.
-- `bun run lint` — Biome lint; `bun run format:check` — non-writing oxfmt check.
-- `bun run format` — pinned oxfmt0.73.0, four spaces and100-column wrapping; preserve logical blank lines. Biome formatting is disabled. The brief, lockfile, generated/vendor files and runtime receipts are excluded.
+- `bun run lint` — exact-pinned oxlint1.88.0 for JS/TS; `bun run format:check` — non-writing oxfmt check. Oxlint's native correctness/suspicious rules and selected TS style rules replace Biome; the rule sets are not identical. JSON gets oxfmt parsing/formatting, not semantic lint such as duplicate-key detection.
+- `bun run format` — pinned oxfmt0.73.0, four spaces and100-column wrapping; preserve logical blank lines. Oxlint does linting only; Biome is removed. The brief, lockfile, generated/vendor files and runtime receipts are excluded.
 - `bun test` / `bun run test:unit` — normal cloud-free unit tests in `tests/unit/`, selected by `bunfig.toml`. They use real Effect Layers or explicit inputs and do not import the stack/Worker resource.
 - `tests/integration/health.test.ts` — one integration suite; local and cloud are execution targets, not separate suites or a mandatory per-commit matrix. No custom runner or `scripts/` directory.
 - `/next-milestone` in Pi — project prompt, after project trust and `/reload`.
@@ -32,7 +32,7 @@ Cloud commands are **approval-gated**, not routine checks:
 - `apps/server/src/http.ts`: Effect handler/app Layer; `worker.ts`: sole application Worker edge. Root `alchemy.run.ts`: sole application Stack.
 - Future `domain` owns entities/errors; `core` owns cloud-free stages/ports; web and CLI consume the shared contract. Do not create speculative packages before their milestone.
 - One runtime per edge; no scattered `runPromise`. Schema at boundaries, typed errors, services/layers. Health has no application failure or settings requirement. Future secrets use `Config.Redacted`; `.env*` and `.alchemy/` stay ignored. Never print secrets.
-- Worker/API TS projects exclude Bun types; lint rejects Bun/Node host adapters. Tests can use Bun. Default discovery stays in `tests/unit`; integration is selected explicitly by file path.
+- Worker/API TS projects exclude Bun types. Oxlint preserves the prior host-import pattern restrictions in these source directories; tests can use Bun. These lint patterns are not a sandbox: bare Node names, `node:` subpaths and `require()` retain the prior rule's gaps. Do not use them to bypass the architectural boundary. Default discovery stays in `tests/unit`; integration is selected explicitly by file path.
 - **No module mocking or interception in tests.** Use real Effect Layers/services or explicit pure inputs. Do not replace modules, install module-loader hooks, or patch globals as a substitute. Infrastructure tests must use Alchemy's actual native `Test.make` hooks. Unit tests do not prove native hook scheduling, cloud cleanup or account-wide inventory equality.
 
 ## Verified API facts (installed 2026-10-12)
