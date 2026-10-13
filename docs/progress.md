@@ -12,6 +12,10 @@
 - [ ] 7. Follow-ups, marks, recaps
 - [ ] 8. Hardening and production
 
+## Current state — 2026-10-13 after approved dev teardown
+
+Milestone0's historical health checks remain valid evidence of the unchanged executable snapshot. The dev Worker and `kbpod/dev` stage state are now **intentionally absent**, not a running endpoint. Shared Alchemy state infrastructure was outside the teardown target and its API remains functional. Shipping is held; the proposed native provision→assert→teardown test harness is not implemented or approved. The existing manual runtime checks must not be represented as that automated lifecycle.
+
 ## 2026-10-12 — foundation plan approved
 
 Chau approved milestone 0 only, including local commit, not credentials, cloud mutations, replacements/destruction, pushing, or a PR.
@@ -167,4 +171,20 @@ Interactive Pi project trust/menu/reload remains **unverified**; no trust settin
 
 ### Next milestone
 
-Milestone1 is **not implemented or authorized by this delivery**. Start a new approved session from `docs/brief.md` and the next-milestone prompt; verify current installed APIs before designing the audio path. The dev stage is live: another local Alchemy run on it is a replacement requiring fresh approval. Future cloud/profile actions and publishing remain separately gated.
+Milestone1 is **not implemented or authorized by this delivery**. Start a new approved session from `docs/brief.md` and the next-milestone prompt; verify current installed APIs before designing the audio path. The dev stage was subsequently destroyed under the separate approval below. Another Alchemy run may recreate resources; future cloud/profile actions and publishing remain separately gated.
+
+## 2026-10-13 — approved dev teardown completed
+
+Chau approved destruction of only `kbpod/dev`'s health Worker and its stage state (hubseq66), leaving shared Alchemy infrastructure untouched. Ownership checks matched the sole completed live `Server`, physical Worker `kbpod-server-dev-uy3chod3kue5jnxj`, intended account and immutable Worker ID. No old/replaced generations or declared data resources were present. A necessary own-profile OAuth refresh succeeded through the installed noninteractive provider read; no browser login or shared-state initialization was used for preflight.
+
+An initial guard paused on five actual Worker bindings. One additional bounded settings GET (hubseq67) classified all five as the exact `plain_text` runtime metadata names injected by beta81's Worker provider: `ALCHEMY_PHASE`, `ALCHEMY_WORKER_NAME`, `ALCHEMY_STACK_NAME`, `ALCHEMY_STAGE`, and `ALCHEMY_CLOUDFLARE_ACCOUNT_ID`. There were zero unknown/custom names, secret bindings or data-resource references. No binding values or raw response payloads were retained. Their count alone was not evidence of extra infrastructure; classification resolved the concern without changing the target.
+
+Exactly one operator command ran:
+```sh
+ALCHEMY_TUI=1 bun alchemy destroy --stage dev --profile kbpod-dev
+```
+Its native preview contained **1 deletion: `Server (Cloudflare.Worker)`**, no extra resources. Only that same snapshot was confirmed, at14:20:23UTC; the command exited0 at14:20:33UTC. No blanket approval/force/adopt/unlock flags, retry, preliminary deployment or health request was used.
+
+Four bounded authoritative metadata GETs at14:21:29–14:21:39UTC passed: the target Worker was absent, dev resources were empty, `dev` was absent from the stack's stage list, and the shared state API remained version7. The shared state Worker remained present and all other Worker inventory names matched the preflight digest. Shared DOs, Secrets Store and keys were not individually inventoried or targeted; their preservation is supported by the stage-scoped operation and functioning shared API, not a separate full inventory comparison. Other stages had no preflight comparison baseline, so no global stage-inventory equality claim is made.
+
+All original health passes, source-identity qualifications and independent-review limitations above remain historical evidence. This teardown does not implement the proposed native lifecycle test harness and does not authorize reprovisioning or publishing. Local receipts preserve the initial stop, classification, exact preview, process outcome and postchecks separately.

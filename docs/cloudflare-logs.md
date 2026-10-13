@@ -1,6 +1,6 @@
 # Cloudflare log investigation
 
-Verified 2026-10-12 against official public docs and published/installed source. Current state (2026-10-13): the separately authorized unchanged bootstrap resume succeeded; its original failure cause remains unproven. Local and deployed-dev health subsequently passed, and the dev application Worker is intentionally **live**. Both bounded historical-query authorizations are **consumed**; no repeat, wider query, tail, repair or other cloud action is implied. See `docs/progress.md` for current delivery evidence.
+Verified 2026-10-12 against official public docs and published/installed source. Current state (2026-10-13): the separately authorized unchanged bootstrap resume succeeded; its original failure cause remains unproven. Local and deployed-dev health subsequently passed. A separately approved teardown on2026-10-13 intentionally removed the dev application Worker and its stage state; the shared state service remains functional. Both bounded historical-query authorizations are **consumed**; no repeat, wider query, tail, repair or other cloud action is implied. See `docs/progress.md` for current delivery evidence.
 
 ## Local CLI
 
