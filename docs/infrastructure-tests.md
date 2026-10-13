@@ -1,70 +1,55 @@
-# Native health lifecycle tests
+# Unit and integration tests
 
-`bun test` is offline. It skips infrastructure discovery without importing Alchemy/the stack. The opt-in commands use beta81's native `Test.make`, `beforeAll(deploy(Stack))` and `afterAll(destroy(Stack))`; they are not shell wrappers around CLI deployment. `scripts/infra.ts` only supervises the native test process, enforces the whole-run deadline and verifies metadata after exit.
+There are **unit tests and one integration suite**. Local emulation and Cloudflare are targets of the same integration suite, not three suites or a required per-commit matrix. Bun is the runner; Alchemy owns provisioning and teardown. There is no custom test supervisor, smoke CLI or `scripts/` directory.
 
-## Run only with scoped approval
-
-These commands create and delete infrastructure/state. Their presence is not standing permission to run them. D-6, amended by approved D-7, permits at most one local run followed by one live run after successful local health, owned-resource cleanup and removal verification under the evidence limits below. Any later use needs its own authority. Do not recreate `dev`, use `prod`, or reuse another run's stage.
-
-Supply the approved account ID and existing shared-state origin through **private process environment**, not committed configuration or command output:
-
-- `KBPOD_INFRA_APPROVED_COMMIT`: the approved tested snapshot's full SHA (review findings and later parent-verified changes are recorded separately). The checkout must match and be clean before any profile refresh or cloud request.
-- `KBPOD_INFRA_ACCOUNT_ID`: expected account, compared with both `kbpod-dev` profile/cache and the account API.
-- `KBPOD_INFRA_ACCOUNT_NAME`: previously confirmed account name, checked in the same preflight GET; never written to receipts.
-- `KBPOD_INFRA_STATE_ORIGIN`: expected existing HTTPS state Worker origin, compared with the private cache.
-- For live only, `KBPOD_INFRA_LOCAL_RUN`: the prior successful local run's 12-hex ID. Its commit, account, origin and executable source hashes must match.
+## Unit tests
 
 ```sh
-bun run test:infra:local
-# Only after its health + cleanup + removal verification pass:
-bun run test:infra:live
+bun test
+# Equivalent package alias:
+bun run test:unit
 ```
 
-Use a private environment-setting launcher rather than putting credentials in these commands. Tokens are read only from the existing named profile/cache, never accepted from ambient Cloudflare variables. Reject `ALCHEMY_*`/`CLOUDFLARE_*` overrides and dotenv files (except `.env.example`); in particular `ALCHEMY_TEST_DEV="0"` is not a safe boolean override. The child validates its parent PID, nonce, fresh stage, source hashes and environment before importing Alchemy.
+`bunfig.toml` sets the discovery root to `tests/unit`. These tests exercise the real Effect HttpApi Layer, exact health assertions, safe diagnostics, bounded readiness and small explicit configuration inputs. They do not import the stack or Alchemy runtime, read credentials or make network calls. No module mocks, loader interception or global patches are used.
 
-Each invocation exclusively reserves `.alchemy/health-tests/<12hex>/`, then checks that `kbpod/e2e-local-<12hex>` or `kbpod/e2e-live-<12hex>` is absent. There is no adoption. Only the existing health `Server` is allowed. Five generated `plain_text` runtime metadata bindings are expected—not extra infrastructure: `ALCHEMY_PHASE`, `ALCHEMY_WORKER_NAME`, `ALCHEMY_STACK_NAME`, `ALCHEMY_STAGE`, `ALCHEMY_CLOUDFLARE_ACCOUNT_ID`. Custom, secret or data-resource bindings fail the cleanup ownership guard. An empty binding array is allowed only for a failed-setup `creating` placeholder after the same resource/account/stage/immutable-tag ownership checks; completed deployment still requires all five.
+## Integration: choose a target only when needed and authorized
 
-## D-8: exact recovery and corrected state contract
+Both targets create/delete a fresh application stage and may access remote shared state/auth. **All prior operation claims are consumed; neither command is authorized now.** Do not run a target just because the code changed.
 
-The first D-6/D-7 local run `22bfea207d84` passed deployment/health but stopped before destroy. Source inspection and an offline reproduction proved the guard incorrectly treated **ResourceState.bindings** as a record. The original response field was not retained, so its exact failure field remains unproven. The corrected guard requires an empty **array**; this is separate from the five generated Worker **settings** bindings. Positive fixtures use erased SDK types and JSON-roundtrip semantics. Metadata-shape failures retain only allowlisted field/shape categories, including through native hooks and supervisor receipts.
+After separate scoped authorization, the direct commands are:
 
-Chau approved one D-8 recovery of **only `kbpod/e2e-local-22bfea207d84`**, local Server, same profile/account. The explicit one-off supervisor argument is `recover-local-22bfea207d84`; it is not a general recovery interface. It validates original safe receipts, unchanged app/SDK source, current approved commit and absent old listener. It never signals the old receipt PID. A new exclusive recovery claim and new receipt directory preserve the original failed run.
+```sh
+DO_NOT_TRACK=1 KBPOD_TEST_TARGET=local bun test ./tests/integration/health.test.ts
+# Or choose the cloud target of that SAME suite:
+DO_NOT_TRACK=1 KBPOD_TEST_TARGET=cloud bun test ./tests/integration/health.test.ts
+```
 
-The separate, gated `tests/infra/recovery.entry.ts` is outside default discovery. Native hooks perform read-only inspection in beforeAll, recheck ownership in afterAll, and call native destroy at most once—**no deploy and no health request**. A failed inspection disables cleanup; a wholly absent target is a verified no-op. Current inventory must match the original unrelated inventory; partial/unexpected shapes stop. Limits: seven inspection GETs, three teardown recheck GETs, four postchecks; zero health GETs; unchanged destroy/teardown/overall bounds and D-7 limitations. Inspection shares the60-second preflight deadline with any single necessary OAuth refresh. Failed inspection/recheck/destroy stops without additional postverification requests or another attempt. Successful cleanup still requires authoritative absence/inventory/process verification.
+The package alias `KBPOD_TEST_TARGET=local bun run test:integration` (or `cloud`) sets DNT and invokes that same Bun command, not another runner. An isolated offline Bun1.4.2 sentinel prototype verified that bare discovery uses the unit root while the explicit file path selects integration.
 
-Only verified recovery success permits one replacement fresh local lifecycle; only its full success permits one fresh live lifecycle at the **same corrected tested commit**. No original claim/receipt is reset, no adoption/sweep or shared infrastructure cleanup is authorized. The original independent review remains NOT READY under its old criteria; this is parent verification under approved amendments, not an independent re-review.
+The test file:
 
-The approved D-8 sequence subsequently passed at `fbfd9ce`: recovery `47b423e95ecb`, replacement local `609d2ed5da29`, and live `065d144b6679`. All targets were removed and all operation claims consumed. These are historical outcomes, **not permission to rerun the commands**. See `docs/progress.md` for counts, timestamps and remaining evidence limits.
+1. Requires an explicit target and DNT; rejects `ALCHEMY_TEST_DEV` rather than silently overriding the target.
+2. Generates a fresh `it-<target>-<random>` stage inside the file. There is no caller-supplied stage, reuse, recovery selector, adoption or dev/prod default.
+3. Creates `Test.make` with `Cloudflare.providers()`, `Cloudflare.state()`, profile `kbpod-dev`, and the chosen local-provider flag.
+4. Registers `beforeAll(deploy(Stack))`, a health assertion, and `afterAll(destroy(Stack))`. Bun hook timeouts are300 seconds for setup and180 seconds for teardown; the health test is75 seconds.
+5. Validates the returned URL's basic target shape and calls the shared health helper directly.
 
-## Bounds and failure behavior
+The health helper allows at most six GETs, each with a10-second request/body deadline and no redirects. Only404,500–599 or200 HTML trigger propagation retries, with0.5,1,2,3,3-second delays. The first200 JSON response matching the exact one-field shared schema succeeds; there is no extra success request. Failures retain fixed reason/status/media/transport categories, not raw response bodies or exception causes. Unit tests supply fetch functions directly.
 
-- Preflight: 60 seconds, six metadata GETs. Necessary own OAuth refresh is allowed once; the remaining credential lifetime must cover the run. beta81's registration-only Cloudflare auth layer is not publicly exported, so the helper uses its pinned installed declaration/source without building providers/state or falling back to browser login.
-- Deploy: one native invocation, 300-second Effect deadline inside a 330-second Bun hook.
-- Health: at most six GETs, 10 seconds each including body, no redirects. Retry only404,500–599, or200 HTML; delays are0.5,1,2,3,3 seconds. Total75 seconds inside a90-second Bun test. All other failures stop readiness immediately. The first exact200 JSON/shared-schema/one-field pass is the assertion—no extra final request. The ordinary smoke CLI remains one-shot.
-- Cleanup: registered before execution, including after a settled setup failure/partial creation or failed assertion. Ownership guard30 seconds, then one native destroy180 seconds, within210 seconds total and a240-second Bun hook. If provisioning remains unsettled, **do not race it with destroy**. An error is a failed run, never an invitation to retry or sweep stages.
-- Explicit metadata across preflight, cleanup guard and postchecks is capped at16 GETs per mode, each10 seconds without redirects/retries/pages. Native provider polling and approved state-auth recovery are separate and remain bounded by the operation deadlines; their exact per-mode request counts are not independently measured.
-- Whole execution:15 minutes, then owned-process-group SIGINT/20 seconds, SIGTERM/5 seconds, SIGKILL if necessary/5 seconds to reap. Final read-only verification gets up to30 seconds within a16-minute overall budget. Captured stdout/stderr is drained and discarded, not copied into reports or receipts. This operational supervisor envelope does not guarantee that every detached process or in-flight remote request has ceased.
+## What a result means
 
-Effect timeout requests interruption; it cannot guarantee that remote requests or uninterruptible finalizers have stopped. The native adapter's fallback closes host scope/sidecar, **not cloud resources**. SIGKILL, machine loss, lost credentials or failed deletion can leave resources. Preserve the owned stage and safe outcomes for a separately authorized recovery; never run a broad cleanup command.
+A passing integration run means Bun completed the native hooks and the health assertion. **SDK teardown success is not an independent inventory/removal audit.** Unit tests do not emulate native scheduling or demonstrate cleanup after synthetic deployment failures.
 
-## Supported native behavior (D-7)
+The SDK owns authentication, provider operations and finalization. No application test code parses profile files, refreshes OAuth, checks account inventories, records operator claims or launches a supervised child. The old tests of those deleted mechanisms and of the deleted CLI are intentionally removed.
 
-Before SDK auth initialization and in the native child environment, `DO_NOT_TRACK=1` disables Alchemy's default OTLP logs/metrics/traces exporters. Wrapped deploy/destroy and explicit OAuth-refresh effects also use supported `References.MinimumLogLevel = "None"` and `Effect.withTracerEnabled(false)`. These scoped controls do not promise universal silence during runtime-layer initialization or in sidecars. No global hooks, preloads, request/filesystem/spawn interception or SDK patches are used.
+Native fallback closes host scopes/sidecars; it does not itself guarantee remote resource deletion. Hook timeouts, interruption, failed credentials or provider deletion errors can leave resources or processes. There is no universal deadline/cessation guarantee and no independent detached-process check. Stop and report the generated stage and safe failure category; investigate or clean up only under separately scoped authorization. Never sweep stages or delete shared infrastructure. Do not automatically retry the integration suite after a failure.
 
-Native Stack evaluation may still append ordinary logs under ignored `.alchemy/`. **Do not inspect, copy, attach or commit those raw logs.** Safe harness reports are not proof that every SDK log is redacted or protected by an OS sandbox. The state-auth preview helper logs a full non-200 response body and includes a prefix in its error; its inspected success path does not log the returned secret.
+`DO_NOT_TRACK=1` plus supported scoped Effect log/tracer controls reduce telemetry. They are not a universal output sanitizer: native initialization/errors and sidecars can still emit output, and raw SDK files may remain under ignored `.alchemy/`. Never inspect, copy, attach or commit those raw logs. Native state auth can use an edge preview and update its named cache; local mode is not an offline boundary. Shared-state bootstrap/upgrade/repair needs separate approval.
 
-If cached state authentication fails after preflight, native recovery may create an edge-preview session, optionally exchange its token, and upload preview code on the existing `alchemy-state-store` route in the same approved account. It reads fixed existing secret `AlchemyStateStoreToken` through one temporary `SECRET` binding and may update the named profile's credential cache. The SDK selects the first returned Secrets Store; this is not an independent store audit. Its helper permits up to15 retries after the first attempt, within native phase deadlines. Exact preview expiry and explicit preview deletion are not attested. This does not authorize live shared-state publication, bootstrap, upgrade, repair, secret rotation or teardown. Keep version/bootstrap-residue preflight, default `updateStateStore=false` and noninteractive prompts.
+## Historical evidence is separate
 
-The native adapter closes host scope after destroy and has fallback sidecar closure; the sidecar has its own process group, a native kill finalizer and parent-disconnect shutdown. Some closure errors are ignored. The supervisor proves only its **observed test group** and known health listener are absent; detached descendants remain **not independently attested**, even on a passing run. Any observed survivor, timeout, unsafe ownership or failed cleanup/removal still fails and prevents the live run. There is no sweep authority.
+The older bounded supervisor and exact-stage incident recovery are retained in Git history, not reusable project code. Their original ignored receipts remain unchanged under `.hub/` and `.alchemy/health-tests/`.
 
-## Evidence
+Actual recovery `47b423e95ecb`, replacement local `609d2ed5da29` and live `065d144b6679` passed at **`fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**, including then-authorized independent removal/inventory checks. Original local `22bfea207d84` remains a failed run. All claims are consumed.
 
-Ignored run artifacts contain:
-
-- `run.json`: exclusively reserved stage/mode, target/nonce digests, source hashes and unrelated-inventory baselines; no credentials.
-- `child.json`: separate deploy/health/cleanup outcomes, bounded health observations and source-validated creation/ownership evidence. Failures use safe categories or the existing smoke formatter, never raw exception/body/header/binding values.
-- `receipt.json`: native process exit, `observedTestGroupStopped`, local listener check and final stage/Worker-removal metadata. `evidenceLimits` explicitly records the SDK-log, preview-expiry and detached-descendant limitations; a returned adapter path is not universal host-cleanup proof. A health pass alone is not overall success; cleanup/verification failure makes the command nonzero.
-
-Passing postchecks prove that the owned stage is absent with zero resources, its live Worker is absent (none was created for local mode), unrelated Worker/stage-name inventories match, and shared state Worker/version7 remains functional. Shared DOs, Secrets Store and keys are not individually inventoried; this is not an exhaustive shared-data audit.
-
-Offline tests exercise guards, request budgets, retry/abort behavior and safe diagnostics through explicit response inputs. Real Effect services test scoped controls and failure normalization; lifecycle policy tests cover settled versus unsettled cleanup eligibility. Tests do not substitute Alchemy modules, install loader hooks or patch globals. Disabled/forged registration and quiet CLI imports use actual subprocesses without interception; their output assertions are not independent network-call or module-resolution attestation. The removed mocked-adapter scenarios no longer claim to cover native hook scheduling or synthetic native deployment/cleanup failures. Actual Alchemy integration evidence is recorded separately by exact tested commit in `docs/progress.md`.
+Neither the later formatted commit `976e0f5` nor this simplified runner inherits that exact runtime proof. **The simplified integration suite has not been executed.** Current validation is offline/unit/typecheck only; no new independent review was authorized. Original NOT READY review and D-7/D-8 qualifications remain historical, not a new clean review. See the dated record in `docs/progress.md`.

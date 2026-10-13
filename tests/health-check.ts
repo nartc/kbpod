@@ -1,10 +1,10 @@
 import { Health } from "@kbpod/api";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
+import * as Schedule from "effect/Schedule";
 
 const reasons = [
-    "usage",
-    "invalid_url",
     "timeout",
     "transport",
     "http_status",
@@ -106,7 +106,7 @@ export const formatHealthFailure = (error: unknown): string => {
     }
 };
 
-// Shared by in-process tests and opt-in network smoke checks. No runtime or cloud imports.
+// Shared by unit tests and the integration suite. No cloud imports.
 export const checkHealthResponse = (response: Response) =>
     Effect.gen(function* () {
         const details = {
@@ -141,3 +141,58 @@ export const checkHealthResponse = (response: Response) =>
         }
         return health;
     });
+
+type FetchHealth = (url: URL, init: RequestInit) => Promise<Response>;
+
+// Cancellation covers both the request and its body; errors retain only safe categories.
+export const requestHealth = (url: string, fetchResponse: FetchHealth = fetch) =>
+    Effect.acquireUseRelease(
+        Effect.sync(() => new AbortController()),
+        (controller) =>
+            Effect.tryPromise({
+                try: () =>
+                    fetchResponse(new URL("/health", url), {
+                        signal: controller.signal,
+                        redirect: "error",
+                    }),
+                catch: (error) => {
+                    const transport = classifyTransportError(error);
+                    return new HealthCheckError(transport === "timeout" ? "timeout" : "transport", {
+                        transport,
+                    });
+                },
+            }).pipe(Effect.flatMap(checkHealthResponse)),
+        (controller) => Effect.sync(() => controller.abort()),
+    ).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.catchTag("TimeoutError", () => Effect.fail(new HealthCheckError("timeout"))),
+        Effect.catchCause((cause) => {
+            const error = Cause.squash(cause);
+            return Effect.fail(
+                error instanceof HealthCheckError ? error : new HealthCheckError("unexpected"),
+            );
+        }),
+    );
+
+export const healthNotReady = (error: HealthCheckError) =>
+    (error.reason === "http_status" &&
+        (error.details.status === 404 ||
+            (error.details.status !== undefined &&
+                error.details.status >= 500 &&
+                error.details.status <= 599))) ||
+    (error.reason === "content_type" &&
+        error.details.status === 200 &&
+        error.details.contentType === "html");
+
+// One successful response proves the contract. At most six GETs, only for edge propagation.
+export const waitForHealth = (url: string, fetchResponse: FetchHealth = fetch) =>
+    requestHealth(url, fetchResponse).pipe(
+        Effect.retry({
+            while: healthNotReady,
+            times: 5,
+            schedule: Schedule.min([
+                Schedule.exponential("500 millis"),
+                Schedule.spaced("3 seconds"),
+            ]),
+        }),
+    );

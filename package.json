@@ -13,9 +13,8 @@
         "format:check": "oxfmt --check .",
         "format": "oxfmt --write .",
         "test": "bun test",
-        "test:infra:local": "bun scripts/infra.ts local",
-        "test:infra:live": "bun scripts/infra.ts live",
-        "smoke": "bun scripts/smoke.ts",
+        "test:unit": "bun test",
+        "test:integration": "DO_NOT_TRACK=1 bun test ./tests/integration/health.test.ts",
         "cf": "node ./node_modules/cf/bin/cf"
     },
     "dependencies": {

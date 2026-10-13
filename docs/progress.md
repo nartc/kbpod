@@ -12,9 +12,22 @@
 - [ ] 7. Follow-ups, marks, recaps
 - [ ] 8. Hardening and production
 
-## Current state — 2026-10-13 after native lifecycle verification
+## Current state — 2026-10-13 after direct test simplification
 
-Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held. S-1 formatting is now applied separately. Current offline checks pass, but the formatted source does not inherit runtime byte-identity evidence from `fbfd9ce`.
+Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held after Chau selected Fix first. The project now has normal unit tests and one direct Bun/native Alchemy integration suite, with local/cloud targets. The custom supervisor, incident recovery, credential/state audit and smoke CLI have been removed from reusable code. Current offline checks pass; the simplified integration suite has not been run and does not inherit runtime proof from `fbfd9ce`. Dated sections below describe earlier implementations and consumed commands, not current tooling or standing authority.
+
+## 2026-10-13 — direct Bun unit and integration tests
+
+Chau clarified apps/packages/tests, normal unit tests and integration tests. Local/cloud are targets of one integration suite, not three suites or a mandatory per-commit matrix. Fix first on the976e0f5 guide and hubseq82–84 authorize this simplification, not cloud execution or publishing.
+
+- Removed `scripts/` entirely, including the custom supervisor and manual smoke CLI. Removed credential parsing/refresh, account/state metadata audits, claims/receipts, custom lifecycle policy and hardcoded incident recovery from reusable tests.
+- Unit tests live in `tests/unit`, with `bunfig.toml` making bare `bun test` unit-only. An isolated offline sentinel prototype verified that an explicit integration file path selects that file despite the unit discovery root.
+- `tests/integration/health.test.ts` directly registers real Alchemy `Test.make` deploy/health/destroy hooks on a fresh internally generated stage, no adoption, profile `kbpod-dev`. One explicit local/cloud target selects provider mode; there is no local-success receipt prerequisite.
+- Shared `tests/health-check.ts` retains exact schema/raw-body/status/MIME assertions, safe diagnostics, request/body cancellation and bounded edge-readiness retries. Dependencies are supplied explicitly in unit tests; no module/loader/global mocking. Existing application/API/Worker/stack code is unchanged.
+- Coverage intentionally drops deleted supervisor/credential/inventory/state-shape/recovery/CLI behavior. Native finalization is the SDK's responsibility; its success is not an independent inventory, removal or process audit. Failures can leave resources and require separately authorized investigation, not a shipped recovery framework.
+- Current offline suite: **42 passed, zero failed**,68 assertions, with no integration file discovered or skipped. Frozen install, formatting, Biome lint, all three typechecks and diff checks pass. All12 original/D-8 run/child/receipt hashes and the brief hash remain unchanged.
+- Test/runner TypeScript shrank from15 files/3,075 lines at976e0f5 to6 files/532 lines. The direct integration file is59 lines, replacing the471-line supervisor and its helper machinery. These are source-size counts, not coverage percentages.
+- Historical safe receipts and original brief remain unchanged. Old source is available in Git history. No integration/cloud run, new reviewer, shared-infrastructure mutation or publishing followed this refactor. Exact native proof remains `fbfd9ce`; there is no runtime-equivalence claim for this redesign.
 
 ## 2026-10-13 — S-1: official oxfmt and readable four-space formatting
 

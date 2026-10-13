@@ -3,8 +3,8 @@ import { Health } from "@kbpod/api";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as HttpRouter from "effect/http/HttpRouter";
-import { HealthCheckError, checkHealthResponse } from "../../../tests/health-check.ts";
-import { ApiLive } from "../src/http.ts";
+import { HealthCheckError, checkHealthResponse } from "../health-check.ts";
+import { ApiLive } from "../../apps/server/src/http.ts";
 
 describe("health API", () => {
     test("the real HttpApi handler responds with the exact shared contract", async () => {
@@ -48,7 +48,7 @@ describe("health API", () => {
         ["invalid status", () => Response.json({ status: "not-ok" })],
         ["extra fields", () => Response.json({ status: "ok", secret: "not-a-real-secret" })],
         ["missing status", () => Response.json({})],
-    ])("the shared smoke assertions reject %s", async (_label, response) => {
+    ])("the shared health assertions reject %s", async (_label, response) => {
         await expect(Effect.runPromise(checkHealthResponse(response()))).rejects.toBeInstanceOf(
             HealthCheckError,
         );
