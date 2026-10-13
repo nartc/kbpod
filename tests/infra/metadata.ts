@@ -3,7 +3,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as Schema from "effect/Schema";
 import { digest, readJson, type Run } from "./files.ts";
-import { budgets, InfraFailure, requireThat, validateBindings } from "./policy.ts";
+import {
+  budgets,
+  decodeField,
+  InfraFailure,
+  requireShape,
+  requireThat,
+  validateBindings,
+  type MetadataField,
+} from "./policy.ts";
 
 const Profile = Schema.Struct({
   format: Schema.Literal("alchemy.profile/v1"),
@@ -21,20 +29,10 @@ const Cache = Schema.Struct({
   authToken: Schema.String,
 });
 const ObjectValue = Schema.Record(Schema.String, Schema.Unknown);
-const object = (value: unknown) => {
-  try {
-    return Schema.decodeUnknownSync(ObjectValue)(value);
-  } catch {
-    throw new InfraFailure("metadata_shape");
-  }
-};
-const strings = (value: unknown) => {
-  try {
-    return Schema.decodeUnknownSync(Schema.Array(Schema.String))(value);
-  } catch {
-    throw new InfraFailure("metadata_shape");
-  }
-};
+const object = (value: unknown, field: MetadataField) =>
+  decodeField(Schema.decodeUnknownSync(ObjectValue), value, field);
+const strings = (value: unknown, field: MetadataField) =>
+  decodeField(Schema.decodeUnknownSync(Schema.Array(Schema.String)), value, field);
 export function readCredentials(accountId: string, origin: string) {
   const home = join(homedir(), ".alchemy");
   const profile = Schema.decodeUnknownSync(Profile)(
@@ -229,7 +227,10 @@ export class Metadata {
           bytes += next.value.length;
           if (bytes > 65_536) {
             await reader.cancel();
-            throw new InfraFailure("metadata_shape");
+            throw new InfraFailure("metadata_shape", response.status, {
+              field: "response",
+              shape: "oversized",
+            });
           }
           chunks.push(next.value);
         }
@@ -242,7 +243,10 @@ export class Metadata {
       try {
         return JSON.parse(new TextDecoder().decode(body));
       } catch {
-        throw new InfraFailure("metadata_shape");
+        throw new InfraFailure("metadata_shape", response.status, {
+          field: "response",
+          shape: "invalid_json",
+        });
       }
     } catch (error) {
       if (error instanceof InfraFailure) throw error;
@@ -250,8 +254,8 @@ export class Metadata {
     }
   }
   private result(input: unknown) {
-    const envelope = object(input);
-    requireThat(envelope.success === true, "metadata_shape");
+    const envelope = object(input, "envelope");
+    requireShape(envelope.success, "envelope.success", envelope.success === true);
     return envelope.result;
   }
   private statePath(stage: string) {
@@ -260,12 +264,13 @@ export class Metadata {
   }
   async version() {
     requireThat(
-      object(await this.get("shared_version", "/version", true, true)).version === 7,
+      object(await this.get("shared_version", "/version", true, true), "shared_version").version ===
+        7,
       "state_failure",
     );
   }
   async account() {
-    const account = object(this.result(await this.get("account", "")));
+    const account = object(this.result(await this.get("account", "")), "account");
     requireThat(
       account.id === this.credentials.accountId &&
         (this.credentials.expectedAccountName === undefined ||
@@ -276,18 +281,21 @@ export class Metadata {
   async inventory() {
     const data = await this.get("workers", "/workers/scripts");
     const result = this.result(data);
-    requireThat(Array.isArray(result), "metadata_shape");
+    requireShape(result, "workers", Array.isArray(result));
+    requireThat(Array.isArray(result));
     const workers = result.map((value) => {
-      const row = object(value);
-      requireThat(typeof row.id === "string", "metadata_shape");
+      const row = object(value, "worker");
+      requireShape(row.id, "worker.id", typeof row.id === "string");
+      requireThat(typeof row.id === "string");
       return { name: row.id, tag: row.tag };
     });
-    const info = object(data).result_info;
+    const info = object(data, "envelope").result_info;
     if (info) {
-      const count = object(info).total_count;
-      requireThat(
+      const count = object(info, "workers.result_info").total_count;
+      requireShape(
+        count,
+        "workers.total_count",
         count === undefined || (typeof count === "number" && count <= workers.length),
-        "metadata_shape",
       );
     }
     requireThat(
@@ -297,23 +305,31 @@ export class Metadata {
     return workers;
   }
   async stages() {
-    return strings(await this.get("stages", "/state/stacks/kbpod/stages", true));
+    return strings(await this.get("stages", "/state/stacks/kbpod/stages", true), "stages");
   }
   async resources(stage: string) {
-    return strings(await this.get("resources", `${this.statePath(stage)}/resources`, true));
+    return strings(
+      await this.get("resources", `${this.statePath(stage)}/resources`, true),
+      "resources",
+    );
   }
   async replaced(stage: string) {
     const rows = await this.get("replaced", `${this.statePath(stage)}/replaced-resources`, true);
     requireThat(Array.isArray(rows) && rows.length === 0, "unexpected_resource");
   }
   async server(stage: string) {
-    return object(await this.get("server", `${this.statePath(stage)}/resources/Server`, true));
+    return object(
+      await this.get("server", `${this.statePath(stage)}/resources/Server`, true),
+      "resource",
+    );
   }
   async settings(worker: string, ownedCreatingPlaceholder = false) {
     requireThat(/^[a-z0-9-]+$/.test(worker));
     return validateBindings(
-      object(this.result(await this.get("settings", `/workers/scripts/${worker}/settings`)))
-        .bindings,
+      object(
+        this.result(await this.get("settings", `/workers/scripts/${worker}/settings`)),
+        "settings",
+      ).bindings,
       ownedCreatingPlaceholder,
     );
   }
@@ -354,9 +370,13 @@ export class Metadata {
         !row.old,
       "unexpected_resource",
     );
-    const bindings = row.bindings === undefined ? {} : object(row.bindings);
-    requireThat(Object.keys(bindings).length === 0, "unexpected_binding");
-    const props = object(row.props);
+    const bindings = decodeField(
+      Schema.decodeUnknownSync(Schema.Array(Schema.Unknown)),
+      row.bindings,
+      "resource.bindings",
+    );
+    requireThat(bindings.length === 0, "unexpected_binding");
+    const props = object(row.props, "resource.props");
     requireThat(
       ![
         "bindings",
@@ -376,7 +396,7 @@ export class Metadata {
       ),
       "unexpected_resource",
     );
-    const attr = row.attr === undefined ? {} : object(row.attr);
+    const attr = row.attr === undefined ? {} : object(row.attr, "resource.attr");
     if (setupPassed)
       requireThat(["created", "updated"].includes(String(row.status)), "unexpected_resource");
     const worker = attr.workerName;
@@ -397,7 +417,8 @@ export class Metadata {
         !attr.versionOf &&
         (!attr.routes || (Array.isArray(attr.routes) && attr.routes.length === 0)) &&
         (!attr.durableObjectNamespaces ||
-          Object.keys(object(attr.durableObjectNamespaces)).length === 0),
+          Object.keys(object(attr.durableObjectNamespaces, "resource.attr.durableObjectNamespaces"))
+            .length === 0),
       "unexpected_resource",
     );
     if (run.mode === "live") {
@@ -421,6 +442,29 @@ export class Metadata {
       "unexpected_resource",
     );
     return { resourceCount: 1, worker, local: true, created: setupPassed };
+  }
+  // One exact D8 recovery inspection; never selects a target from inventory.
+  async inspectRecovery(run: Run) {
+    requireThat(run.mode === "local" && run.stage === "e2e-local-22bfea207d84", "target_mismatch");
+    await this.version();
+    await this.account();
+    const workers = await this.inventory();
+    const stages = await this.stages();
+    requireThat(
+      !workers.some((w) => w.name.includes(run.stage)) &&
+        digest(JSON.stringify(workers.map((w) => w.name).sort())) === run.beforeWorkers &&
+        digest(JSON.stringify(stages.filter((s) => s !== run.stage).sort())) === run.beforeStages,
+      "inventory_changed",
+    );
+    const present = stages.includes(run.stage);
+    const ownership = await this.guardCleanup(run, present);
+    requireThat(
+      present
+        ? ownership.created === true && ownership.local === true
+        : ownership.resourceCount === 0,
+      "unexpected_resource",
+    );
+    return { absent: !present, ownership };
   }
   async verify(run: Run) {
     await this.version();

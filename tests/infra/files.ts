@@ -29,6 +29,8 @@ export const runtimeFiles = [
   "tests/infra/policy.ts",
   "tests/infra/metadata.ts",
   "tests/infra/native.ts",
+  "tests/infra/recovery.entry.ts",
+  "tests/infra/recovery-native.ts",
   "node_modules/alchemy/src/Test/Bun.ts",
   "node_modules/alchemy/src/Test/Core.ts",
   "node_modules/alchemy/src/Cloudflare/Auth/AuthProvider.ts",
@@ -50,6 +52,8 @@ export const Run = Schema.Struct({
   source: Schema.Record(Schema.String, Schema.String),
   beforeWorkers: Schema.String,
   beforeStages: Schema.String,
+  recoveryFrom: Schema.optional(Schema.Literal("22bfea207d84")),
+  inspectionDeadline: Schema.optional(Schema.Number),
 });
 export type Run = typeof Run.Type;
 export function readJson(path: string): unknown {
@@ -74,7 +78,10 @@ export function loadChildContext(env = process.env, parentPid = process.ppid) {
   const run = Schema.decodeUnknownSync(Run)(readJson(join(directory, "run.json")));
   requireThat(
     run.id === env.KBPOD_INFRA_RUN &&
-      run.stage === stageFor(run.mode, run.id) &&
+      run.stage === stageFor(run.mode, run.recoveryFrom ?? run.id) &&
+      (run.recoveryFrom === undefined
+        ? env.KBPOD_INFRA_RECOVERY === undefined
+        : run.mode === "local" && env.KBPOD_INFRA_RECOVERY === run.recoveryFrom) &&
       run.parentPid === parentPid &&
       run.nonceHash === digest(env.KBPOD_INFRA_NONCE ?? "") &&
       Date.now() - run.createdAt >= 0 &&

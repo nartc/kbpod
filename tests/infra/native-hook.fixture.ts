@@ -10,6 +10,7 @@ const directory = process.env.KBPOD_FIXTURE_DIRECTORY;
 const scenario = process.env.KBPOD_FIXTURE_SCENARIO;
 if (!directory || !scenario) throw new Error("fixture_requires_explicit_context");
 const events = { deploy: 0, destroy: 0 };
+writeJson(join(directory, "events.json"), events);
 const account = "a".repeat(32);
 const origin = "https://alchemy-state-store.fixture.workers.dev";
 process.env.KBPOD_INFRA_ACCOUNT_ID = account;
@@ -60,8 +61,9 @@ mock.module("alchemy/Test/Bun", () => ({
         yield* Effect.logError("synthetic-private-exception");
         events.destroy++;
         writeJson(join(directory, "events.json"), events);
-        if (scenario === "cleanup-timeout") return yield* Effect.never;
-        if (scenario === "cleanup-failure")
+        if (["cleanup-timeout", "recovery-cleanup-timeout"].includes(scenario))
+          return yield* Effect.never;
+        if (["cleanup-failure", "recovery-cleanup-failure"].includes(scenario))
           return yield* Effect.fail(new Error("synthetic-private-exception"));
       }),
   }),
@@ -69,9 +71,27 @@ mock.module("alchemy/Test/Bun", () => ({
 mock.module(new URL("./metadata.ts", import.meta.url).pathname, () => ({
   readCredentials: () => ({ accountId: account, origin }),
   Metadata: class {
-    async guardCleanup() {
-      if (scenario === "guard-failure") throw new policy.InfraFailure("unexpected_resource");
+    async inspectRecovery() {
+      if (scenario === "recovery-inspection-failure")
+        throw new policy.InfraFailure("metadata_shape", 200, {
+          field: "resource.bindings",
+          shape: "object",
+        });
       return {
+        absent: scenario === "recovery-noop",
+        ownership: { created: true, local: true, resourceCount: 1 },
+      };
+    }
+    async guardCleanup() {
+      if (["guard-failure", "recovery-recheck-failure"].includes(scenario))
+        throw new policy.InfraFailure("unexpected_resource");
+      if (scenario === "shape-failure")
+        throw new policy.InfraFailure("metadata_shape", 200, {
+          field: "resource.bindings",
+          shape: "object",
+        });
+      return {
+        local: true,
         resourceCount: scenario === "setup-failure" ? 0 : 1,
         created: scenario !== "setup-failure",
       };
@@ -80,7 +100,14 @@ mock.module(new URL("./metadata.ts", import.meta.url).pathname, () => ({
 }));
 mock.module(new URL("./policy.ts", import.meta.url).pathname, () => ({
   ...policy,
-  budgets: { ...policy.budgets, deploy: 150, health: 50, destroy: 50, cleanup: 100 },
+  budgets: {
+    ...policy.budgets,
+    deploy: 150,
+    preflight: 150,
+    health: 50,
+    destroy: 50,
+    cleanup: 100,
+  },
   readiness: async (
     _url: string,
     _signal: AbortSignal,
@@ -107,5 +134,18 @@ const run: Run = {
   beforeWorkers: "fixture",
   beforeStages: "fixture",
 };
-const { register } = await import("./native.ts");
-register({ run, directory });
+if (scenario.startsWith("recovery-")) {
+  const { registerRecovery } = await import("./recovery-native.ts");
+  registerRecovery({
+    run: {
+      ...run,
+      recoveryFrom: "22bfea207d84",
+      stage: "e2e-local-22bfea207d84",
+      inspectionDeadline: Date.now() + 1_000,
+    },
+    directory,
+  });
+} else {
+  const { register } = await import("./native.ts");
+  register({ run, directory });
+}

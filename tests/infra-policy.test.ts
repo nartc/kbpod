@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { evidenceLimits, nativeEnvironment } from "./infra/controls.ts";
 import { digest, type Run } from "./infra/files.ts";
 import { Metadata } from "./infra/metadata.ts";
+import { serverState } from "./infra/state.fixture.ts";
 import {
   budgets,
   generatedNames,
@@ -183,6 +184,19 @@ describe("native lifecycle policy (offline)", () => {
     });
     expect(safeFailure(new InfraFailure("metadata_http", 9000))).toEqual({ code: "metadata_http" });
   });
+  test("forged diagnostic values are never retained", () => {
+    const invalid = Object.assign(new InfraFailure("metadata_shape"), {
+      detail: { field: secret, shape: "object" },
+    });
+    expect(safeFailure(invalid)).toEqual({ code: "metadata_shape" });
+    const extra = Object.assign(new InfraFailure("metadata_shape"), {
+      detail: { field: "resource.props", shape: "null", raw: secret },
+    });
+    expect(safeFailure(extra)).toEqual({
+      code: "metadata_shape",
+      detail: { field: "resource.props", shape: "null" },
+    });
+  });
   test("disabled and forged discovery never import Alchemy or fetch", () => {
     const directory = mkdtempSync(join(tmpdir(), "kbpod-infra-offline-"));
     try {
@@ -208,6 +222,13 @@ describe("native lifecycle policy (offline)", () => {
       expect(forged.exitCode).not.toBe(0);
       expect(forged.stderr.toString()).toContain("invalid_infra_registration");
       expect(forged.stderr.toString()).not.toContain("ALCHEMY_IMPORT_FORBIDDEN");
+      const recovery = Bun.spawnSync(
+        [process.execPath, "test", "--preload", preload, "./tests/infra/recovery.entry.ts"],
+        { env, timeout: 10_000 },
+      );
+      expect(recovery.exitCode).not.toBe(0);
+      expect(recovery.stderr.toString()).toContain("invalid_recovery_registration");
+      expect(recovery.stderr.toString()).not.toContain("ALCHEMY_IMPORT_FORBIDDEN");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -221,6 +242,7 @@ describe("our native hook registration (isolated offline boundary fixtures)", ()
     "assertion-failure",
     "cleanup-failure",
     "guard-failure",
+    "shape-failure",
     "unsettled",
     "deploy-timeout",
     "health-timeout",
@@ -243,11 +265,15 @@ describe("our native hook registration (isolated offline boundary fixtures)", ()
       const receipt = JSON.parse(readFileSync(join(directory, "child.json"), "utf8"));
       const events = JSON.parse(readFileSync(join(directory, "events.json"), "utf8"));
       expect(events.deploy).toBe(1);
-      expect(events.destroy).toBe(["guard-failure", "unsettled"].includes(scenario) ? 0 : 1);
+      expect(events.destroy).toBe(
+        ["guard-failure", "shape-failure", "unsettled"].includes(scenario) ? 0 : 1,
+      );
       expect(receipt.phases.cleanup.outcome).toBe(
         scenario === "unsettled"
           ? "not_attempted"
-          : ["cleanup-failure", "guard-failure", "cleanup-timeout"].includes(scenario)
+          : ["cleanup-failure", "guard-failure", "shape-failure", "cleanup-timeout"].includes(
+                scenario,
+              )
             ? "failed"
             : "passed",
       );
@@ -255,10 +281,76 @@ describe("our native hook registration (isolated offline boundary fixtures)", ()
         expect(receipt.setupSettled).toBe(true);
       if (["assertion-failure", "health-timeout"].includes(scenario))
         expect(receipt.phases.health.outcome).toBe("failed");
+      if (scenario === "shape-failure")
+        expect(receipt.phases.cleanup.failure).toEqual({
+          code: "metadata_shape",
+          status: 200,
+          detail: { field: "resource.bindings", shape: "object" },
+        });
       expect(receipt.evidenceLimits).toEqual(evidenceLimits);
       expect(result.stdout.toString()).not.toContain("synthetic-private-exception");
       expect(JSON.stringify(receipt)).not.toContain("synthetic-private-exception");
       expect(result.stderr.toString()).not.toContain("synthetic-private-exception");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("cleanup-only native recovery hooks (offline)", () => {
+  test.each([
+    "recovery-success",
+    "recovery-noop",
+    "recovery-inspection-failure",
+    "recovery-recheck-failure",
+    "recovery-cleanup-failure",
+    "recovery-cleanup-timeout",
+  ])("%s never deploys or checks health", (scenario) => {
+    const directory = mkdtempSync(join(tmpdir(), "kbpod-recovery-hooks-"));
+    try {
+      const entry = join(directory, "hooks.test.ts");
+      writeFileSync(
+        entry,
+        `import ${JSON.stringify(new URL("./infra/native-hook.fixture.ts", import.meta.url).pathname)};`,
+      );
+      const result = Bun.spawnSync([process.execPath, "test", entry], {
+        env: {
+          ...process.env,
+          KBPOD_FIXTURE_DIRECTORY: directory,
+          KBPOD_FIXTURE_SCENARIO: scenario,
+        },
+        timeout: 5_000,
+      });
+      expect(result.exitCode).toBe(
+        ["recovery-success", "recovery-noop"].includes(scenario) ? 0 : 1,
+      );
+      const receipt = JSON.parse(readFileSync(join(directory, "child.json"), "utf8"));
+      const events = JSON.parse(readFileSync(join(directory, "events.json"), "utf8"));
+      expect(events.deploy).toBe(0);
+      expect(events.destroy).toBe(
+        ["recovery-noop", "recovery-inspection-failure", "recovery-recheck-failure"].includes(
+          scenario,
+        )
+          ? 0
+          : 1,
+      );
+      expect(receipt.destroyCalls).toBe(events.destroy);
+      expect(receipt.attempts).toEqual([]);
+      expect(receipt.phases.deploy.outcome).toBe("not_attempted");
+      expect(receipt.phases.health.outcome).toBe("not_attempted");
+      if (scenario === "recovery-inspection-failure") {
+        expect(receipt.phases.cleanup.outcome).toBe("not_attempted");
+        expect(receipt.phases.inspection.failure.detail).toEqual({
+          field: "resource.bindings",
+          shape: "object",
+        });
+      }
+      for (const output of [
+        JSON.stringify(receipt),
+        result.stdout.toString(),
+        result.stderr.toString(),
+      ])
+        expect(output).not.toContain("synthetic-private-exception");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -275,7 +367,7 @@ const credentials = {
 };
 const id = "abcdef123456";
 const stage = stageFor("live", id);
-const worker = `kbpod-server-${stage}-fixture`;
+const worker = `kbpod-server-${stage}-${"c".repeat(16)}`;
 const run: Run = {
   id,
   stage,
@@ -382,16 +474,7 @@ describe("authoritative metadata guards (injected offline responses)", () => {
       undefined,
       fixture({
         [`${prefix}/resources`]: ["Server"],
-        [`${prefix}/resources/Server`]: {
-          fqn: "Server",
-          logicalId: "Server",
-          resourceType: "Cloudflare.Worker",
-          providerMode: "live",
-          status: "created",
-          bindings: {},
-          props: { main: "fixture" },
-          attr: { workerName: worker, workerId: "tag", accountId: account },
-        },
+        [`${prefix}/resources/Server`]: serverState("live", worker, account),
         [`/accounts/${account}/workers/scripts`]: {
           success: true,
           result: [{ id: "alchemy-state-store" }, { id: worker, tag: "tag" }],
@@ -433,14 +516,8 @@ describe("authoritative metadata guards (injected offline responses)", () => {
       const responses = {
         [`${prefix}/resources`]: ["Server"],
         [`${prefix}/resources/Server`]: {
-          fqn: "Server",
-          logicalId: "Server",
-          resourceType: "Cloudflare.Worker",
-          providerMode: "live",
+          ...serverState("live", worker, account),
           status,
-          bindings: {},
-          props: { main: "fixture" },
-          attr: { workerName: worker, workerId: "tag", accountId: account },
         },
         [`/accounts/${account}/workers/scripts`]: {
           success: true,
@@ -473,6 +550,151 @@ describe("authoritative metadata guards (injected offline responses)", () => {
         await expect(foreign.guardCleanup(run, false)).rejects.toThrow("unexpected_resource");
       } else
         await expect(client.guardCleanup(run, setupPassed)).rejects.toThrow("unexpected_binding");
+    },
+  );
+  test.each([
+    { value: undefined, shape: "missing" },
+    { value: {}, shape: "object" },
+    { value: null, shape: "null" },
+    { value: secret, shape: "string" },
+    { value: 1, shape: "number" },
+    { value: false, shape: "boolean" },
+  ])("state bindings reject unsupported $shape with safe diagnostics", async ({ value, shape }) => {
+    const prefix = `/state/stacks/kbpod/stages/${stage}`;
+    const client = new Metadata(
+      credentials,
+      3,
+      signal(),
+      undefined,
+      fixture({
+        [`${prefix}/resources`]: ["Server"],
+        [`${prefix}/resources/Server`]: {
+          ...serverState("live", worker, account),
+          bindings: value,
+        },
+      }),
+    );
+    const failure = await client.guardCleanup(run, true).then(() => undefined, safeFailure);
+    expect(failure).toEqual({
+      code: "metadata_shape",
+      detail: { field: "resource.bindings", shape },
+    });
+    expect(client.observations).toHaveLength(3);
+    expect(JSON.stringify(failure)).not.toContain(secret);
+  });
+  test("nonempty supported state bindings remain forbidden", async () => {
+    const prefix = `/state/stacks/kbpod/stages/${stage}`;
+    const client = new Metadata(
+      credentials,
+      3,
+      signal(),
+      undefined,
+      fixture({
+        [`${prefix}/resources`]: ["Server"],
+        [`${prefix}/resources/Server`]: {
+          ...serverState("live", worker, account),
+          bindings: [{ data: secret }],
+        },
+      }),
+    );
+    await expect(client.guardCleanup(run, true)).rejects.toThrow("unexpected_binding");
+  });
+  test.each(["props", "attr"] as const)(
+    "malformed %s retains its safe failing field",
+    async (field) => {
+      const prefix = `/state/stacks/kbpod/stages/${stage}`;
+      const client = new Metadata(
+        credentials,
+        3,
+        signal(),
+        undefined,
+        fixture({
+          [`${prefix}/resources`]: ["Server"],
+          [`${prefix}/resources/Server`]: {
+            ...serverState("live", worker, account),
+            [field]: [secret],
+          },
+        }),
+      );
+      expect(await client.guardCleanup(run, true).then(() => undefined, safeFailure)).toEqual({
+        code: "metadata_shape",
+        detail: { field: `resource.${field}`, shape: "array" },
+      });
+    },
+  );
+  test("source-conformant local row survives JSON omission of undefined attributes", async () => {
+    const localRun = { ...run, mode: "local" as const, stage: stageFor("local", id) };
+    const name = `kbpod-server-${localRun.stage}-${"c".repeat(16)}`;
+    const prefix = `/state/stacks/kbpod/stages/${localRun.stage}`;
+    const client = new Metadata(
+      credentials,
+      3,
+      signal(),
+      undefined,
+      fixture({
+        [`${prefix}/resources`]: ["Server"],
+        [`${prefix}/replaced-resources`]: [],
+        [`${prefix}/resources/Server`]: serverState("local", name, account),
+      }),
+    );
+    expect((await client.guardCleanup(localRun, true)).created).toBe(true);
+    expect(client.observations).toHaveLength(3);
+  });
+  test("invalid JSON reports no body text", async () => {
+    const client = new Metadata(
+      credentials,
+      1,
+      signal(),
+      undefined,
+      async () => new Response(secret),
+    );
+    const failure = await client.version().then(() => undefined, safeFailure);
+    expect(failure).toEqual({
+      code: "metadata_shape",
+      status: 200,
+      detail: { field: "response", shape: "invalid_json" },
+    });
+    expect(JSON.stringify(failure)).not.toContain(secret);
+  });
+  test.each(["owned", "absent", "partial", "foreign-stage", "wrong-target", "bad-shape"])(
+    "exact recovery inspection: %s",
+    async (kind) => {
+      const target = "e2e-local-22bfea207d84";
+      const recoveryRun = {
+        ...run,
+        mode: "local" as const,
+        stage: kind === "wrong-target" ? stage : target,
+      };
+      const name = `kbpod-server-${target}-${"c".repeat(16)}`;
+      const prefix = `/state/stacks/kbpod/stages/${target}`;
+      const client = new Metadata(
+        credentials,
+        7,
+        signal(),
+        undefined,
+        fixture({
+          "/state/stacks/kbpod/stages":
+            kind === "absent" ? [] : kind === "foreign-stage" ? [target, secret] : [target],
+          [`${prefix}/resources`]: kind === "absent" ? [] : ["Server"],
+          [`${prefix}/replaced-resources`]: [],
+          [`${prefix}/resources/Server`]: {
+            ...serverState("local", name, account),
+            ...(kind === "partial" ? { status: "creating" } : {}),
+            ...(kind === "bad-shape" ? { bindings: {} } : {}),
+          },
+        }),
+      );
+      if (["owned", "absent"].includes(kind)) {
+        expect((await client.inspectRecovery(recoveryRun)).absent).toBe(kind === "absent");
+        expect(client.observations).toHaveLength(kind === "absent" ? 6 : 7);
+      } else {
+        const failure = await client
+          .inspectRecovery(recoveryRun)
+          .then(() => undefined, safeFailure);
+        expect(failure).toBeDefined();
+        expect(JSON.stringify(failure)).not.toContain(secret);
+        if (kind === "wrong-target") expect(client.observations).toHaveLength(0);
+      }
     },
   );
   test("foreign resources fail closed and never become deletion targets", async () => {

@@ -51,10 +51,79 @@ export const Codes = Schema.Literals([
   "output_limit",
 ]);
 export type Code = typeof Codes.Type;
+export const MetadataField = Schema.Literals([
+  "response",
+  "envelope",
+  "envelope.success",
+  "shared_version",
+  "account",
+  "workers",
+  "worker",
+  "worker.id",
+  "workers.result_info",
+  "workers.total_count",
+  "stages",
+  "resources",
+  "replaced",
+  "resource",
+  "resource.bindings",
+  "resource.props",
+  "resource.attr",
+  "resource.attr.durableObjectNamespaces",
+  "settings",
+]);
+export type MetadataField = typeof MetadataField.Type;
+export const ObservedShape = Schema.Literals([
+  "missing",
+  "null",
+  "array",
+  "object",
+  "string",
+  "number",
+  "boolean",
+  "other",
+  "invalid_json",
+  "oversized",
+]);
+export const ShapeDetail = Schema.Struct({ field: MetadataField, shape: ObservedShape });
+export type ShapeDetail = typeof ShapeDetail.Type;
+export const observedShape = (value: unknown): typeof ObservedShape.Type => {
+  if (value === undefined) return "missing";
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  switch (typeof value) {
+    case "object":
+      return "object";
+    case "string":
+      return "string";
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    default:
+      return "other";
+  }
+};
+export function requireShape(value: unknown, field: MetadataField, valid: boolean): asserts valid {
+  if (!valid)
+    throw new InfraFailure("metadata_shape", undefined, { field, shape: observedShape(value) });
+}
+export function decodeField<A>(
+  decode: (value: unknown) => A,
+  value: unknown,
+  field: MetadataField,
+): A {
+  try {
+    return decode(value);
+  } catch {
+    throw new InfraFailure("metadata_shape", undefined, { field, shape: observedShape(value) });
+  }
+}
 export class InfraFailure extends Error {
   constructor(
     readonly code: Code,
     readonly status?: number,
+    readonly detail?: ShapeDetail,
   ) {
     super(code);
     this.name = "InfraFailure";
@@ -63,10 +132,15 @@ export class InfraFailure extends Error {
 export function requireThat(value: unknown, code: Code = "invalid_configuration"): asserts value {
   if (!value) throw new InfraFailure(code);
 }
-export const safeFailure = (error: unknown): { code: Code; status?: number } => {
+export const safeFailure = (
+  error: unknown,
+): { code: Code; status?: number; detail?: ShapeDetail } => {
   if (error instanceof InfraFailure)
     return {
       code: Schema.is(Codes)(error.code) ? error.code : "native_failure",
+      ...(error.code === "metadata_shape" && Schema.is(ShapeDetail)(error.detail)
+        ? { detail: { field: error.detail.field, shape: error.detail.shape } }
+        : {}),
       ...(Number.isInteger(error.status) && (error.status ?? 0) >= 100 && (error.status ?? 0) <= 599
         ? { status: error.status as number }
         : {}),
@@ -84,6 +158,11 @@ export const safeFailure = (error: unknown): { code: Code; status?: number } => 
   }
   return { code: "native_failure" };
 };
+// Reconstruct only fixed safe fields; preserve diagnostics across Effect.tryPromise.
+export function normalizeFailure(error: unknown) {
+  const failure = safeFailure(error);
+  return new InfraFailure(failure.code, failure.status, failure.detail);
+}
 export function stageFor(mode: Mode, id: string): string {
   requireThat(Schema.is(Mode)(mode) && /^[a-f0-9]{12}$/.test(id));
   return `e2e-${mode}-${id}`;

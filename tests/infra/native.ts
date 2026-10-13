@@ -12,6 +12,7 @@ import {
   budgets,
   InfraFailure,
   Lifecycle,
+  normalizeFailure,
   readiness,
   requireThat,
   safeFailure,
@@ -63,7 +64,13 @@ export function register({ run, directory }: ReturnType<typeof loadChildContext>
           }),
         ),
         Effect.catchCause(() =>
-          Effect.fail(new InfraFailure(lifecycle.phases.deploy.failure?.code ?? "native_failure")),
+          Effect.fail(
+            new InfraFailure(
+              lifecycle.phases.deploy.failure?.code ?? "native_failure",
+              lifecycle.phases.deploy.failure?.status,
+              lifecycle.phases.deploy.failure?.detail,
+            ),
+          ),
         ),
       );
     }),
@@ -104,7 +111,7 @@ export function register({ run, directory }: ReturnType<typeof loadChildContext>
           creation = await metadata.guardCleanup(run, lifecycle.phases.deploy.outcome === "passed");
           persist();
         },
-        catch: (error) => new InfraFailure(safeFailure(error).code),
+        catch: normalizeFailure,
       });
       yield* destroy(Stack).pipe(quietNative, Effect.timeout(budgets.destroy));
     }).pipe(
@@ -120,7 +127,13 @@ export function register({ run, directory }: ReturnType<typeof loadChildContext>
         }),
       ),
       Effect.catchCause(() =>
-        Effect.fail(new InfraFailure(lifecycle.phases.cleanup.failure?.code ?? "cleanup_failed")),
+        Effect.fail(
+          new InfraFailure(
+            lifecycle.phases.cleanup.failure?.code ?? "cleanup_failed",
+            lifecycle.phases.cleanup.failure?.status,
+            lifecycle.phases.cleanup.failure?.detail,
+          ),
+        ),
       ),
     ),
     { timeout: budgets.cleanupHook },
@@ -166,7 +179,7 @@ export function register({ run, directory }: ReturnType<typeof loadChildContext>
               persist();
             },
           }),
-        catch: (error) => new InfraFailure(safeFailure(error).code),
+        catch: normalizeFailure,
       });
       if (!result.passed) return yield* Effect.fail(new InfraFailure("health_failure"));
     }).pipe(
@@ -180,7 +193,13 @@ export function register({ run, directory }: ReturnType<typeof loadChildContext>
         }),
       ),
       Effect.catchCause(() =>
-        Effect.fail(new InfraFailure(lifecycle.phases.health.failure?.code ?? "health_failure")),
+        Effect.fail(
+          new InfraFailure(
+            lifecycle.phases.health.failure?.code ?? "health_failure",
+            lifecycle.phases.health.failure?.status,
+            lifecycle.phases.health.failure?.detail,
+          ),
+        ),
       ),
     ),
     { timeout: budgets.healthHook },

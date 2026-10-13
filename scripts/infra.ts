@@ -1,10 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import * as Schema from "effect/Schema";
 import { evidenceLimits, nativeEnvironment } from "../tests/infra/controls.ts";
-import { digest, readJson, type Run, sourceIdentity, writeJson } from "../tests/infra/files.ts";
+import { digest, readJson, Run, sourceIdentity, writeJson } from "../tests/infra/files.ts";
 import {
   guardLocalFiles,
   Metadata,
@@ -13,6 +13,8 @@ import {
 } from "../tests/infra/metadata.ts";
 import {
   budgets,
+  Codes,
+  ShapeDetail,
   InfraFailure,
   Mode,
   requireThat,
@@ -21,15 +23,29 @@ import {
   validateEnvironment,
 } from "../tests/infra/policy.ts";
 
+const Phase = Schema.Struct({
+  outcome: Schema.Literals(["not_started", "running", "passed", "failed", "not_attempted"]),
+  failure: Schema.optional(
+    Schema.Struct({
+      code: Codes,
+      status: Schema.optional(Schema.Number),
+      detail: Schema.optional(ShapeDetail),
+    }),
+  ),
+});
 const Child = Schema.Struct({
   phases: Schema.Struct({
-    deploy: Schema.Struct({ outcome: Schema.String }),
-    health: Schema.Struct({ outcome: Schema.String }),
-    cleanup: Schema.Struct({ outcome: Schema.String }),
+    deploy: Phase,
+    health: Phase,
+    cleanup: Phase,
+    inspection: Schema.optional(Phase),
   }),
   attempts: Schema.Array(Schema.Unknown),
   cleanupObservations: Schema.Array(Schema.Unknown),
   localPort: Schema.optional(Schema.Number),
+  inspectionObservations: Schema.optional(Schema.Array(Schema.Unknown)),
+  inspection: Schema.optional(Schema.Struct({ absent: Schema.Boolean })),
+  destroyCalls: Schema.optional(Schema.Number),
 });
 const groupGone = (pid: number) => {
   try {
@@ -66,8 +82,9 @@ export async function runInfrastructure(input: readonly string[]) {
     if (directory) writeJson(join(directory, "receipt.json"), receipt);
   };
   try {
-    requireThat(input.length === 1 && Schema.is(Mode)(input[0]));
-    const mode = input[0];
+    const recovery = input.length === 1 && input[0] === "recover-local-22bfea207d84";
+    requireThat(input.length === 1 && (recovery || Schema.is(Mode)(input[0])));
+    const mode = recovery ? "local" : Schema.decodeUnknownSync(Mode)(input[0]);
     validateEnvironment(process.env);
     // Set before any dynamic SDK auth import; no persistent user-wide setting.
     process.env.DO_NOT_TRACK = nativeEnvironment(process.env).DO_NOT_TRACK;
@@ -75,7 +92,8 @@ export async function runInfrastructure(input: readonly string[]) {
     requireThat(
       !process.env.KBPOD_INFRA_CHILD &&
         !process.env.KBPOD_INFRA_NONCE &&
-        !process.env.KBPOD_INFRA_RUN,
+        !process.env.KBPOD_INFRA_RUN &&
+        !process.env.KBPOD_INFRA_RECOVERY,
     );
     requireThat(Bun.version === "1.4.2");
     const alchemy = JSON.parse(readFileSync("node_modules/alchemy/package.json", "utf8"));
@@ -130,15 +148,89 @@ export async function runInfrastructure(input: readonly string[]) {
         "target_mismatch",
       );
     }
+    let original: Run | undefined;
+    if (recovery) {
+      const previousDirectory = resolve(".alchemy/health-tests/22bfea207d84");
+      original = Schema.decodeUnknownSync(Run)(readJson(join(previousDirectory, "run.json")));
+      const previous = Schema.decodeUnknownSync(
+        Schema.Struct({
+          result: Schema.Literal("failed"),
+          mode: Schema.Literal("local"),
+          commit: Schema.Literal("aef0700e9401a48f8435e1b84e09f6530f13cb76"),
+          observedTestGroupStopped: Schema.Literal(true),
+          listenerStopped: Schema.Literal(true),
+        }),
+      )(readJson(join(previousDirectory, "receipt.json")));
+      const child = Schema.decodeUnknownSync(
+        Schema.Struct({
+          setupStarted: Schema.Literal(true),
+          setupSettled: Schema.Literal(true),
+          phases: Schema.Struct({
+            deploy: Schema.Struct({ outcome: Schema.Literal("passed") }),
+            health: Schema.Struct({ outcome: Schema.Literal("passed") }),
+            cleanup: Schema.Struct({ outcome: Schema.Literal("failed") }),
+          }),
+          localPort: Schema.Literal(1337),
+        }),
+      )(readJson(join(previousDirectory, "child.json")));
+      requireThat(
+        previous.result === "failed" &&
+          child.setupSettled &&
+          original.id === "22bfea207d84" &&
+          original.stage === "e2e-local-22bfea207d84" &&
+          original.mode === "local" &&
+          original.accountHash === digest(account) &&
+          original.stateOriginHash === digest(origin) &&
+          existsSync(".hub/d7-local.handled") &&
+          listenerGone(child.localPort),
+        "target_mismatch",
+      );
+      const current = sourceIdentity();
+      const unchanged = [
+        "alchemy.run.ts",
+        "apps/server/src/worker.ts",
+        "apps/server/src/http.ts",
+        "packages/api/src/index.ts",
+        "bun.lock",
+        "package.json",
+        "scripts/smoke.ts",
+        "tests/health-check.ts",
+        ...Object.keys(original.source).filter((path) => path.startsWith("node_modules/")),
+      ];
+      requireThat(
+        unchanged.every((path) => original?.source[path] === current[path]),
+        "target_mismatch",
+      );
+      receipt.originalEvidence = Object.fromEntries(
+        ["run.json", "receipt.json", "child.json"].map((file) => [
+          file,
+          digest(readFileSync(join(previousDirectory, file))),
+        ]),
+      );
+      receipt.originalRun = original.id;
+      receipt.listenerAbsentBeforeRecovery = true;
+      // Exclusive and never reset, even if a later phase fails.
+      writeJson(
+        ".alchemy/health-tests/recovery-22bfea207d84.claim.json",
+        {
+          approvedCommit: expectedCommit,
+          originalRun: original.id,
+          claimedAt: new Date().toISOString(),
+        },
+        true,
+      );
+    }
     const id = randomBytes(6).toString("hex");
-    const stage = stageFor(mode, id);
+    const stage = original?.stage ?? stageFor(mode, id);
     directory = resolve(".alchemy/health-tests", id);
     mkdirSync(directory, { recursive: false });
     receipt.mode = mode;
+    if (recovery) receipt.purpose = "exact_stage_recovery";
     receipt.stage = stage;
     receipt.id = id;
     persist();
     receipt.phase = "preflight";
+    const inspectionDeadline = Date.now() + budgets.preflight;
     const preSignal = AbortSignal.timeout(budgets.preflight);
     if (credentials.expires < Date.now() + budgets.overall + 60_000) {
       await refreshOwnProfile(preSignal, () => {
@@ -152,7 +244,9 @@ export async function runInfrastructure(input: readonly string[]) {
       receipt.preflightObservations = observations;
       persist();
     });
-    const before = await preflight.preflight(stage);
+    const before = original
+      ? { beforeWorkers: original.beforeWorkers, beforeStages: original.beforeStages }
+      : await preflight.preflight(stage);
     const nonce = randomBytes(24).toString("hex");
     run = {
       id,
@@ -164,6 +258,7 @@ export async function runInfrastructure(input: readonly string[]) {
       stateOriginHash: digest(origin),
       createdAt: Date.now(),
       source: sourceIdentity(),
+      ...(recovery ? { recoveryFrom: "22bfea207d84" as const, inspectionDeadline } : {}),
       ...before,
     };
     writeJson(join(directory, "run.json"), run, true);
@@ -173,17 +268,22 @@ export async function runInfrastructure(input: readonly string[]) {
     persist();
     const nativeResult = await new Promise<{ code: number | null; stopped: boolean }>(
       (resolveResult, reject) => {
-        const child = spawn(process.execPath, ["test", "./tests/infra.test.ts"], {
-          cwd: process.cwd(),
-          detached: true,
-          stdio: ["ignore", "pipe", "pipe"],
-          env: {
-            ...nativeEnvironment(process.env),
-            KBPOD_INFRA_CHILD: "1",
-            KBPOD_INFRA_RUN: id,
-            KBPOD_INFRA_NONCE: nonce,
+        const child = spawn(
+          process.execPath,
+          ["test", recovery ? "./tests/infra/recovery.entry.ts" : "./tests/infra.test.ts"],
+          {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: {
+              ...nativeEnvironment(process.env),
+              KBPOD_INFRA_CHILD: "1",
+              KBPOD_INFRA_RUN: id,
+              KBPOD_INFRA_NONCE: nonce,
+              ...(recovery ? { KBPOD_INFRA_RECOVERY: "22bfea207d84" } : {}),
+            },
           },
-        });
+        );
         processPid = child.pid;
         receipt.pid = processPid;
         persist();
@@ -253,12 +353,55 @@ export async function runInfrastructure(input: readonly string[]) {
     } catch {
       /* no trusted child outcome */
     }
+    receipt.nativePhases = Object.fromEntries(
+      Object.entries(childResult?.phases ?? {}).flatMap(([name, phase]) =>
+        phase
+          ? [
+              [
+                name,
+                {
+                  outcome: phase.outcome,
+                  ...(phase.failure
+                    ? {
+                        failure: safeFailure(
+                          new InfraFailure(
+                            phase.failure.code,
+                            phase.failure.status,
+                            phase.failure.detail,
+                          ),
+                        ),
+                      }
+                    : {}),
+                },
+              ],
+            ]
+          : [],
+      ),
+    );
     receipt.listenerStopped = listenerGone(childResult?.localPort);
     receipt.healthRequestCount = childResult?.attempts.length ?? 0;
     const cleanupGets = childResult?.cleanupObservations.length ?? 0;
-    const preGets = preflight.observations.length;
+    const preGets = recovery
+      ? (childResult?.inspectionObservations?.length ?? 0)
+      : preflight.observations.length;
+    if (recovery) {
+      receipt.inspectionObservations = childResult?.inspectionObservations ?? [];
+      receipt.destroyCalls = childResult?.destroyCalls;
+      requireThat(
+        !nativeResult.stopped &&
+          nativeResult.code === 0 &&
+          childResult?.phases.inspection?.outcome === "passed" &&
+          childResult.phases.cleanup.outcome === "passed" &&
+          childResult.phases.deploy.outcome === "not_attempted" &&
+          childResult.phases.health.outcome === "not_attempted" &&
+          childResult.attempts.length === 0 &&
+          childResult.localPort === 1337 &&
+          childResult.destroyCalls === (childResult.inspection?.absent === true ? 0 : 1),
+        "cleanup_failed",
+      );
+    }
     requireThat(
-      preGets + cleanupGets + 4 <= budgets.metadataCount &&
+      preGets + cleanupGets + 4 <= (recovery ? 14 : budgets.metadataCount) &&
         (childResult?.attempts.length ?? 0) <= budgets.healthCount,
       "metadata_budget",
     );
@@ -284,8 +427,9 @@ export async function runInfrastructure(input: readonly string[]) {
       !nativeResult.stopped &&
         nativeResult.code === 0 &&
         childResult !== undefined &&
-        childResult.phases.deploy.outcome === "passed" &&
-        childResult.phases.health.outcome === "passed" &&
+        (recovery ||
+          (childResult.phases.deploy.outcome === "passed" &&
+            childResult.phases.health.outcome === "passed")) &&
         childResult.phases.cleanup.outcome === "passed",
       "cleanup_failed",
     );

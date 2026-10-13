@@ -14,7 +14,18 @@
 
 ## Current state — 2026-10-13 after approved dev teardown
 
-Milestone0's historical health checks remain valid evidence of the unchanged executable snapshot. The dev Worker and `kbpod/dev` stage state are now **intentionally absent**, not a running endpoint. Shared Alchemy state infrastructure was outside the teardown target and its API remains functional. Shipping is held. Chau subsequently approved D-6's native provision→assert→teardown harness and bounded local/live runs; the first native local run subsequently passed provisioning/health but failed its cleanup guard. Owned local stage `e2e-local-22bfea207d84` still had resources at postcheck; recovery requires new scoped authority. The conditional live run did not start. The existing manual runtime checks must not be represented as those new automated lifecycle results.
+Milestone0's historical health checks remain valid evidence of the unchanged executable snapshot. The dev Worker and `kbpod/dev` stage state are now **intentionally absent**, not a running endpoint. Shared Alchemy state infrastructure was outside the teardown target and its API remains functional. Shipping is held. Chau subsequently approved D-6's native provision→assert→teardown harness and bounded local/live runs; the first native local run subsequently passed provisioning/health but failed its cleanup guard. Owned local stage `e2e-local-22bfea207d84` still had resources at postcheck; D-8 subsequently granted one narrowly bounded recovery and conditional replacement verification; execution results are recorded separately below. The conditional live run did not start. The existing manual runtime checks must not be represented as those new automated lifecycle results.
+
+## 2026-10-13 — D-8 approved correction and exact recovery preparation
+
+Chau approved the combined proposal in Inbox `msg_01M4V89BJ8EJHHZK6MCEYE7C45`, relayed as hubseq77. This grants one exact-stage recovery, then one replacement fresh local and still-conditional one live at the corrected tested commit; it does not reset the failed run or broaden targets.
+
+- Parent source audit confirmed `ResourceState.bindings: ResourceBinding[]` and array-preserving serialization. The original exact returned failing field remains unknown. Other guarded collections and generated names match supported source; local deletion uses FQN/instance generation, not a physical-name-only delete.
+- Corrected guard requires an empty state-binding array; all other ownership predicates and the separate Worker settings binding policy remain. Fixed allowlisted field/shape diagnostics survive native wrappers and supervisor receipt parsing without raw values/errors.
+- Positive fixtures use type-only public SDK declarations (the Workers directory export, not an unsupported deeper subpath), complete state/Worker fields and JSON omission of undefined properties. No runtime Alchemy import in default tests.
+- Added explicitly gated, exact-target cleanup-only native hooks with fresh claims/provenance, beforeAll inspection, afterAll ownership recheck, at most one destroy, zero deploy/health calls, and bounded postverification. Failed inspection/recheck/destroy stops the sequence.
+- Offline verification currently **114 passed, one infrastructure skip, zero failed**; format/lint and all three typechecks pass. These include hook-level diagnostic propagation and six isolated recovery scenarios. Final frozen-install/commit checks precede any recovery operation.
+- No D-8 cloud operation has run at this checkpoint. Original local `22bfea207d84` stays failed with nonempty stage state at its last postcheck; no live run has occurred. Original independent review status and D-7 logging/process/auth limitations remain unchanged. S-1 and publishing remain held.
 
 ## 2026-10-12 — foundation plan approved
 

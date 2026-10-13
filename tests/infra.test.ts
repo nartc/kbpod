@@ -7,6 +7,7 @@ if (process.env.KBPOD_INFRA_CHILD === undefined) {
 } else {
   try {
     const context = loadChildContext(); // Validate parent, nonce, stage, environment and source before import.
+    if (context.run.recoveryFrom) throw new Error("invalid_infra_registration");
     const { register } = await import("./infra/native.ts");
     register(context);
   } catch {
