@@ -2,7 +2,7 @@
 
 ## Milestones
 
-- [ ] 0. Foundation — local/deployed health passed; final review, commit and final-head verification pending.
+- [x] 0. Foundation — implementation, independent review, offline checks, actual Alchemy-local and deployed-dev health, and local code commit complete.
 - [ ] 1. Audio path
 - [ ] 2. Topic to episode
 - [ ] 3. Modes, planning, review
@@ -139,12 +139,32 @@ Pi1.1.0's installed pure template loader discovered exactly one project `next-mi
 
 Other-family Claude done-review timed out with no findings/output; its process is gone. Hubseq58 authorized one fresh **same-family independent review; Claude attempt timed out/no findings**, covering the full foundation plus D-4. It completed: no runtime/configuration/test-code blockers or unauthorized scope changes. One stale current-state passage in `docs/cloudflare-logs.md` was confirmed and corrected; historical recommendations are explicitly superseded. No executable change followed the reviewed snapshot. Same-family independence is weaker than a successful cross-family review.
 
-Final offline checks/code commit and the one final anonymous deployed GET remain pending. Hubseq59 approved a subsequent docs-only completion commit: record the GET at its actual code SHA, then prove the final docs HEAD has byte-identical runtime, tooling and dependency/config files. That final HEAD inherits the same executable-snapshot evidence; do not imply a second request or a contemporaneous local-runtime hash.
+## 2026-10-13 — milestone0 local delivery
 
-## Verification still required
-- Interactive Pi project trust/menu/reload remains unverified; file placement and actual installed loader/expansion passed offline. No trust setting was changed or prompt executed.
-- Independent done-check and final-code verification. Local and deployed acceptance have passed; any additional endpoint request needs its scoped authorization. No local restart or redeployment is implied.
-- Preserve the forced-local-stop caveat: retained state was inspected before the approved deployment; no graceful cleanup or lease-release assumption.
-- Independent done-check, final local commit, and guided-review handoff. No remote publishing authorized.
+Reviewed code commit: **`f592c6f1259ae749c1fcba1bba99ce5d03d58df1`** (`feat(foundation): add effect health worker and verification tooling`). The brief rename is100% unchanged. Before commit, frozen install, format, lint, all three TypeScript projects,42 tests and diff checks passed. The code worktree was clean before the final request.
 
-Approved credentials are used only inside the guard/Alchemy; no secret value is printed or committed. Steps1–5 are complete, including real Alchemy-local health/process stop and deployed-dev health. Step6 remains incomplete. The dev application Worker is deployed and its exact health contract is verified. No model/TTS call or publishing has occurred. Final-head verification is not yet recorded because no milestone commit exists. Milestone0 stays unchecked until independent review and final local delivery are complete; both original runtime checks already passed.
+At **02:35:47–02:35:48UTC**, the one authorized final command at that code commit passed:
+```sh
+bun run smoke -- https://kbpod-server-dev-uy3chod3kue5jnxj.nartchome.workers.dev
+```
+It made one anonymous `/health` request, with no redirect/retry, and exited0 after **HTTP200 application/json + shared Health schema + exact one-field object** assertions. Safe output: `Health verified: https://kbpod-server-dev-uy3chod3kue5jnxj.nartchome.workers.dev/health — 200 application/json {"status":"ok"}`. No raw response/header values were retained. This final-request authority is consumed; the Worker remains live. No local restart, redeployment, infrastructure change or publishing occurred.
+
+Hubseq59 approved the **docs-only completion commit containing this section**, followed by offline checks and byte-identity comparison. The actual live GET belongs to `f592c6f1259ae749c1fcba1bba99ce5d03d58df1`; the final docs HEAD inherits it via unchanged application, tooling, dependency and configuration bytes. **No second GET at the docs HEAD is claimed.** Final docs SHA, post-commit checks, clean-state proof and guided-review artifacts are recorded in the local delivery receipt/workstream rather than making this file self-reference its own commit hash.
+
+### Acceptance and limitations
+
+| Criterion | Evidence |
+|---|---|
+| Reproducible workspace, scripts and boundaries | Frozen install, format/lint and separate API/Worker/Bun typechecks passed; pins/lock unchanged |
+| Real Effect tests and safe diagnostics |42 offline tests passed; real app/router disposal plus shared schema/exact-object checks and negative/privacy coverage |
+| Actual Alchemy-local health | Seq51 passed at advertised localhost1337; forced SIGKILL stop is disclosed; source-write reconstruction confirms unchanged app bytes, **not** a contemporaneous local-runtime attestation |
+| Actual deployed-dev health | Seq55 passed; final committed tooling passed once at code SHA `f592c6f` as recorded above |
+| Project memory | Brief checksum preserved, AGENTS/progress present, installed Pi loader/expansion passed |
+| Independent review | Same-family fresh review passed after one doc-only correction; Claude timed out/no findings |
+| Local delivery | Code commit above; docs-only completion and clean final-head/offline/identity evidence accompany the guided review; no push/PR |
+
+Interactive Pi project trust/menu/reload remains **unverified**; no trust setting was changed or prompt executed. Old bootstrap and first deployed smoke causes remain unproven. Local process stop did not prove graceful cleanup or lease release. No secret value is printed or committed, and no application model/TTS call has occurred.
+
+### Next milestone
+
+Milestone1 is **not implemented or authorized by this delivery**. Start a new approved session from `docs/brief.md` and the next-milestone prompt; verify current installed APIs before designing the audio path. The dev stage is live: another local Alchemy run on it is a replacement requiring fresh approval. Future cloud/profile actions and publishing remain separately gated.
