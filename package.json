@@ -13,6 +13,8 @@
     "format:check": "biome format .",
     "format": "biome format --write .",
     "test": "bun test",
+    "test:infra:local": "bun scripts/infra.ts local",
+    "test:infra:live": "bun scripts/infra.ts live",
     "smoke": "bun scripts/smoke.ts",
     "cf": "node ./node_modules/cf/bin/cf"
   },
