@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { evidenceLimits, nativeEnvironment } from "./infra/controls.ts";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as References from "effect/References";
+import { evidenceLimits, nativeEnvironment, quietNative } from "./infra/controls.ts";
 import { digest, type Run } from "./infra/files.ts";
 import { Metadata } from "./infra/metadata.ts";
 import { serverState } from "./infra/state.fixture.ts";
@@ -11,6 +12,7 @@ import {
   generatedNames,
   InfraFailure,
   Lifecycle,
+  normalizeFailure,
   readiness,
   retryDelays,
   safeFailure,
@@ -197,163 +199,72 @@ describe("native lifecycle policy (offline)", () => {
       detail: { field: "resource.props", shape: "null" },
     });
   });
-  test("disabled and forged discovery never import Alchemy or fetch", () => {
-    const directory = mkdtempSync(join(tmpdir(), "kbpod-infra-offline-"));
-    try {
-      const preload = join(directory, "no-cloud.ts");
-      writeFileSync(
-        preload,
-        `import {plugin} from "bun"; plugin({name:"deny-alchemy",setup(b){b.onResolve({filter:/^alchemy(?:\\/|$)/},()=>{throw Error("ALCHEMY_IMPORT_FORBIDDEN")})}}); globalThis.fetch=()=>{throw Error("FETCH_FORBIDDEN")};`,
-      );
-      const env = { ...process.env };
-      delete env.KBPOD_INFRA_CHILD;
-      delete env.KBPOD_INFRA_RUN;
-      delete env.KBPOD_INFRA_NONCE;
-      const disabled = Bun.spawnSync(
-        [process.execPath, "test", "--preload", preload, "./tests/infra.test.ts"],
-        { env, timeout: 10_000 },
-      );
-      expect(disabled.exitCode).toBe(0);
-      expect(disabled.stderr.toString()).not.toContain("ALCHEMY_IMPORT_FORBIDDEN");
-      const forged = Bun.spawnSync(
-        [process.execPath, "test", "--preload", preload, "./tests/infra.test.ts"],
-        { env: { ...env, KBPOD_INFRA_CHILD: "1", KBPOD_INFRA_RUN: "invalid" }, timeout: 10_000 },
-      );
-      expect(forged.exitCode).not.toBe(0);
-      expect(forged.stderr.toString()).toContain("invalid_infra_registration");
-      expect(forged.stderr.toString()).not.toContain("ALCHEMY_IMPORT_FORBIDDEN");
-      const recovery = Bun.spawnSync(
-        [process.execPath, "test", "--preload", preload, "./tests/infra/recovery.entry.ts"],
-        { env, timeout: 10_000 },
-      );
-      expect(recovery.exitCode).not.toBe(0);
-      expect(recovery.stderr.toString()).toContain("invalid_recovery_registration");
-      expect(recovery.stderr.toString()).not.toContain("ALCHEMY_IMPORT_FORBIDDEN");
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
+  test("supported controls are scoped real Effect services", async () => {
+    const controls = await Effect.runPromise(
+      quietNative(
+        Effect.gen(function* () {
+          return {
+            level: yield* References.MinimumLogLevel,
+            tracing: yield* References.TracerEnabled,
+          };
+        }),
+      ),
+    );
+    expect(controls).toEqual({ level: "None", tracing: false });
+    expect(await Effect.runPromise(References.MinimumLogLevel)).not.toBe("None");
   });
-});
-
-describe("our native hook registration (isolated offline boundary fixtures)", () => {
-  test.each([
-    "success",
-    "setup-failure",
-    "assertion-failure",
-    "cleanup-failure",
-    "guard-failure",
-    "shape-failure",
-    "unsettled",
-    "deploy-timeout",
-    "health-timeout",
-    "cleanup-timeout",
-  ])("%s records outcomes and cleanup independently", (scenario) => {
-    const directory = mkdtempSync(join(tmpdir(), "kbpod-hooks-"));
-    try {
-      const entry = join(directory, "hooks.test.ts");
-      const fixture = new URL("./infra/native-hook.fixture.ts", import.meta.url).pathname;
-      writeFileSync(entry, `import ${JSON.stringify(fixture)};`);
-      const result = Bun.spawnSync([process.execPath, "test", entry], {
-        env: {
-          ...process.env,
-          KBPOD_FIXTURE_DIRECTORY: directory,
-          KBPOD_FIXTURE_SCENARIO: scenario,
-        },
-        timeout: 5_000,
-      });
-      expect(result.exitCode).toBe(scenario === "success" ? 0 : 1);
-      const receipt = JSON.parse(readFileSync(join(directory, "child.json"), "utf8"));
-      const events = JSON.parse(readFileSync(join(directory, "events.json"), "utf8"));
-      expect(events.deploy).toBe(1);
-      expect(events.destroy).toBe(
-        ["guard-failure", "shape-failure", "unsettled"].includes(scenario) ? 0 : 1,
-      );
-      expect(receipt.phases.cleanup.outcome).toBe(
-        scenario === "unsettled"
-          ? "not_attempted"
-          : ["cleanup-failure", "guard-failure", "shape-failure", "cleanup-timeout"].includes(
-                scenario,
-              )
-            ? "failed"
-            : "passed",
-      );
-      if (["setup-failure", "deploy-timeout"].includes(scenario))
-        expect(receipt.setupSettled).toBe(true);
-      if (["assertion-failure", "health-timeout"].includes(scenario))
-        expect(receipt.phases.health.outcome).toBe("failed");
-      if (scenario === "shape-failure")
-        expect(receipt.phases.cleanup.failure).toEqual({
-          code: "metadata_shape",
-          status: 200,
-          detail: { field: "resource.bindings", shape: "object" },
-        });
-      expect(receipt.evidenceLimits).toEqual(evidenceLimits);
-      expect(result.stdout.toString()).not.toContain("synthetic-private-exception");
-      expect(JSON.stringify(receipt)).not.toContain("synthetic-private-exception");
-      expect(result.stderr.toString()).not.toContain("synthetic-private-exception");
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
+  test("real Effect failure normalization retains only safe diagnostics", async () => {
+    const exit = await Effect.runPromise(
+      Effect.exit(
+        Effect.tryPromise({
+          try: async () => {
+            throw Object.assign(
+              new InfraFailure("metadata_shape", 200, {
+                field: "resource.bindings",
+                shape: "object",
+              }),
+              { cause: new Error(secret) },
+            );
+          },
+          catch: normalizeFailure,
+        }),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected_failure");
+    const failure = safeFailure(Cause.squash(exit.cause));
+    expect(failure).toEqual({
+      code: "metadata_shape",
+      status: 200,
+      detail: { field: "resource.bindings", shape: "object" },
+    });
+    expect(JSON.stringify(failure)).not.toContain(secret);
+    expect(Cause.pretty(exit.cause)).not.toContain(secret);
   });
-});
-
-describe("cleanup-only native recovery hooks (offline)", () => {
-  test.each([
-    "recovery-success",
-    "recovery-noop",
-    "recovery-inspection-failure",
-    "recovery-recheck-failure",
-    "recovery-cleanup-failure",
-    "recovery-cleanup-timeout",
-  ])("%s never deploys or checks health", (scenario) => {
-    const directory = mkdtempSync(join(tmpdir(), "kbpod-recovery-hooks-"));
-    try {
-      const entry = join(directory, "hooks.test.ts");
-      writeFileSync(
-        entry,
-        `import ${JSON.stringify(new URL("./infra/native-hook.fixture.ts", import.meta.url).pathname)};`,
-      );
-      const result = Bun.spawnSync([process.execPath, "test", entry], {
-        env: {
-          ...process.env,
-          KBPOD_FIXTURE_DIRECTORY: directory,
-          KBPOD_FIXTURE_SCENARIO: scenario,
-        },
-        timeout: 5_000,
-      });
-      expect(result.exitCode).toBe(
-        ["recovery-success", "recovery-noop"].includes(scenario) ? 0 : 1,
-      );
-      const receipt = JSON.parse(readFileSync(join(directory, "child.json"), "utf8"));
-      const events = JSON.parse(readFileSync(join(directory, "events.json"), "utf8"));
-      expect(events.deploy).toBe(0);
-      expect(events.destroy).toBe(
-        ["recovery-noop", "recovery-inspection-failure", "recovery-recheck-failure"].includes(
-          scenario,
-        )
-          ? 0
-          : 1,
-      );
-      expect(receipt.destroyCalls).toBe(events.destroy);
-      expect(receipt.attempts).toEqual([]);
-      expect(receipt.phases.deploy.outcome).toBe("not_attempted");
-      expect(receipt.phases.health.outcome).toBe("not_attempted");
-      if (scenario === "recovery-inspection-failure") {
-        expect(receipt.phases.cleanup.outcome).toBe("not_attempted");
-        expect(receipt.phases.inspection.failure.detail).toEqual({
-          field: "resource.bindings",
-          shape: "object",
-        });
-      }
-      for (const output of [
-        JSON.stringify(receipt),
-        result.stdout.toString(),
-        result.stderr.toString(),
-      ])
-        expect(output).not.toContain("synthetic-private-exception");
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
+  test("real disabled and forged registration entrypoints do not run infrastructure tests", () => {
+    const env = { ...process.env };
+    delete env.KBPOD_INFRA_CHILD;
+    delete env.KBPOD_INFRA_RUN;
+    delete env.KBPOD_INFRA_NONCE;
+    delete env.KBPOD_INFRA_RECOVERY;
+    const disabled = Bun.spawnSync([process.execPath, "test", "./tests/infra.test.ts"], {
+      env,
+      timeout: 10_000,
+    });
+    expect(disabled.exitCode).toBe(0);
+    expect(disabled.stderr.toString()).toContain("1 skip");
+    const forged = Bun.spawnSync([process.execPath, "test", "./tests/infra.test.ts"], {
+      env: { ...env, DO_NOT_TRACK: "1", KBPOD_INFRA_CHILD: "1", KBPOD_INFRA_RUN: "invalid" },
+      timeout: 10_000,
+    });
+    expect(forged.exitCode).not.toBe(0);
+    expect(forged.stderr.toString()).toContain("invalid_infra_registration");
+    const recovery = Bun.spawnSync([process.execPath, "test", "./tests/infra/recovery.entry.ts"], {
+      env,
+      timeout: 10_000,
+    });
+    expect(recovery.exitCode).not.toBe(0);
+    expect(recovery.stderr.toString()).toContain("invalid_recovery_registration");
   });
 });
 

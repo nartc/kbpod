@@ -16,6 +16,14 @@
 
 Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held. S-1 formatting remains separate and cannot inherit runtime byte-identity evidence after changing executable files.
 
+## 2026-10-13 — binding test architecture constraint
+
+Chau explicitly prohibited module mocking and asked that our implementation accommodate Effect and Alchemy's native testing approach (hubseq79). The audit found five module substitutions in the native-hook fixture, one loader-interception preload and three global-fetch replacement sites, all in authored tests. No vendor change was needed.
+
+Removed the entire substituted-native fixture and its16 scenarios. Removed the generated Bun loader plugin and global-fetch patches from infrastructure registration and smoke import checks. Real Alchemy `Test.make` registrations remain unchanged; real HttpApi Layer tests, explicit-input metadata/readiness tests and lifecycle eligibility checks remain. Added direct tests using real Effect references and failure normalization rather than replacing SDK modules.
+
+Offline checks now pass **100 tests, one infrastructure skip, zero failures**, with580 assertions, formatting, lint and all three typechecks. This is an intentional coverage change: offline tests no longer claim to verify Alchemy/Bun hook scheduling, synthetic native failure cleanup, or globally intercepted network/module activity. Actual runtime evidence remains the earlier `fbfd9ce` snapshot. No cloud operation or independent re-review followed this instruction. S-1 was parked to keep this test-architecture change separate, then continues with final formatting.
+
 ## 2026-10-13 — D-8 approved correction and exact recovery preparation
 
 Chau approved the combined proposal in Inbox `msg_01M4V89BJ8EJHHZK6MCEYE7C45`, relayed as hubseq77. This grants one exact-stage recovery, then one replacement fresh local and still-conditional one live at the corrected tested commit; it does not reset the failed run or broaden targets.

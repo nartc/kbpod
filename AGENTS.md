@@ -32,6 +32,7 @@ Cloud commands are **approval-gated**, not routine checks:
 - Future `domain` owns entities/errors; `core` owns cloud-free stages/ports; web and CLI consume the shared contract. Do not create speculative packages before their milestone.
 - One runtime per edge; no scattered `runPromise`. Schema at boundaries, typed errors, services/layers. Health has no application failure or settings requirement. Future secrets use `Config.Redacted`; `.env*` and `.alchemy/` stay ignored. Never print secrets.
 - Worker/API TS projects exclude Bun types; lint rejects Bun/Node host adapters. Test/infra code can use Bun. Keep network smoke checks outside default test discovery.
+- **No module mocking or interception in tests.** Use real Effect Layers/services or explicit pure inputs. Do not replace modules, install module-loader hooks, or patch globals as a substitute. Infrastructure tests must use Alchemy's actual native `Test.make` hooks. Offline policy tests do not prove native hook scheduling or cloud cleanup.
 
 ## Verified API facts (installed 2026-10-12)
 
