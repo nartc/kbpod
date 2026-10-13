@@ -1,11 +1,11 @@
 {
-  "name": "@kbpod/api",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "effect": "4.0.3"
-  }
+    "name": "@kbpod/api",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "dependencies": {
+        "effect": "4.0.3"
+    }
 }

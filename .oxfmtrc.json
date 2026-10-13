@@ -1,0 +1,22 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "tabWidth": 4,
+    "useTabs": false,
+    "printWidth": 100,
+    "sortImports": false,
+    "sortPackageJson": false,
+    "embeddedLanguageFormatting": "off",
+    "jsdoc": false,
+    "proseWrap": "preserve",
+    "ignorePatterns": [
+        "**/node_modules/**",
+        ".hub/**",
+        ".alchemy/**",
+        "**/dist/**",
+        "**/coverage/**",
+        "**/*.tsbuildinfo",
+        "bun.lock",
+        "docs/brief.md",
+        "kbpod-prompt.md"
+    ]
+}

@@ -60,6 +60,7 @@ The native adapter closes host scope after destroy and has fallback sidecar clos
 ## Evidence
 
 Ignored run artifacts contain:
+
 - `run.json`: exclusively reserved stage/mode, target/nonce digests, source hashes and unrelated-inventory baselines; no credentials.
 - `child.json`: separate deploy/health/cleanup outcomes, bounded health observations and source-validated creation/ownership evidence. Failures use safe categories or the existing smoke formatter, never raw exception/body/header/binding values.
 - `receipt.json`: native process exit, `observedTestGroupStopped`, local listener check and final stage/Worker-removal metadata. `evidenceLimits` explicitly records the SDK-log, preview-expiry and detached-descendant limitations; a returned adapter path is not universal host-cleanup proof. A health pass alone is not overall success; cleanup/verification failure makes the command nonzero.

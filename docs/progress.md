@@ -14,7 +14,22 @@
 
 ## Current state — 2026-10-13 after native lifecycle verification
 
-Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held. S-1 formatting remains separate and cannot inherit runtime byte-identity evidence after changing executable files.
+Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held. S-1 formatting is now applied separately. Current offline checks pass, but the formatted source does not inherit runtime byte-identity evidence from `fbfd9ce`.
+
+## 2026-10-13 — S-1: official oxfmt and readable four-space formatting
+
+D-6 results were reported and committed in docs-only `9007f33`. The user-directed test-architecture change then landed separately as `479a0b9db65b6606b39339fde587150c9e54d788`. Its runtime-file hashes match the recorded `fbfd9ce` snapshot; that is source equivalence, not another runtime execution.
+
+S-1 pins official **oxfmt0.73.0**, the current npm release checked on2026-10-13. The npm metadata identifies `oxc-project/oxc`; installed CLI help, configuration schema and declarations confirmed check/write, ignore, indentation and sorting options. No guessed configuration or unpinned launcher is used.
+
+- `format` and `format:check` now use oxfmt. `.oxfmtrc.json` sets four spaces,100-column wrapping, preserved prose and disabled import/package-key sorting. Logical blank lines separate metadata operations and lifecycle methods.
+- Biome remains the linter; its formatter is disabled. Real temporary-file probes still reject Node imports in API/Worker source and allow them in host scripts. Probes were removed.
+- The original brief, lockfile formatting, generated/vendor files and ignored state/receipt folders are excluded. Known run/child/receipt hashes and the original brief hash remained unchanged. An intentionally unformatted ignored probe stayed unchanged.
+- All19 authored TypeScript files produce identical whitespace-normalized Bun transpiler output compared with the pre-format architecture commit. Application source also has a whitespace-only diff. These are offline equivalence checks, **not fresh native runtime attestation**.
+- Existing lockfile package resolutions stayed unchanged; only oxfmt, its platform bindings and its worker-pool dependency were added. Root package changes are limited to the exact devDependency and formatter scripts.
+- Frozen install, oxfmt check, Biome lint, three typechecks, diff checks and **100 offline tests/one infrastructure skip** pass, with580 assertions. No module-mocking, loader-interception or global-fetch replacement site remains in authored test/helper code.
+
+No cloud operation, new reviewer or publishing followed formatting. All prior operational claims remain consumed. Runtime proof for the newly formatted snapshot would require a separately authorized fresh local/live verification scope; it has not been run or silently inherited.
 
 ## 2026-10-13 — binding test architecture constraint
 
@@ -39,11 +54,11 @@ Chau approved the combined proposal in Inbox `msg_01M4V89BJ8EJHHZK6MCEYE7C45`, r
 
 All three operations used the same clean tested executable commit **`fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**, with matching source/account/origin identities. Each result was consumed once with a separate handled marker. No further cloud request, retry or cleanup is authorized.
 
-| Operation | UTC window | Outcome | Explicit metadata GETs | Health GETs | OAuth refresh POSTs |
-| --- | --- | --- | --- | --- | --- |
-| Recovery `47b423e95ecb` of `e2e-local-22bfea207d84` | 18:46:17–18:46:23 | PASS | 14 | 0 | 1 |
-| Replacement local `609d2ed5da29` | 18:48:28–18:48:35 | PASS | 13 | 1 | 0 |
-| Live `065d144b6679` | 18:50:36–18:51:07 | PASS | 15 | 5 | 0 |
+| Operation                                           | UTC window        | Outcome | Explicit metadata GETs | Health GETs | OAuth refresh POSTs |
+| --------------------------------------------------- | ----------------- | ------- | ---------------------- | ----------- | ------------------- |
+| Recovery `47b423e95ecb` of `e2e-local-22bfea207d84` | 18:46:17–18:46:23 | PASS    | 14                     | 0           | 1                   |
+| Replacement local `609d2ed5da29`                    | 18:48:28–18:48:35 | PASS    | 13                     | 1           | 0                   |
+| Live `065d144b6679`                                 | 18:50:36–18:51:07 | PASS    | 15                     | 5           | 0                   |
 
 Recovery inspected the sole completed local Server and rechecked ownership before **one native destroy**, with no deployment or health request. Current state passed the corrected empty-array guard; this does not prove which field failed in the original unretained response. Postchecks proved the old stage absent with zero resources. Original failed run/child/receipt hashes were verified unchanged.
 
@@ -58,6 +73,7 @@ Raw SDK logs were not inspected/copied/committed. Safe operator and phase receip
 Chau approved milestone 0 only, including local commit, not credentials, cloud mutations, replacements/destruction, pushing, or a PR.
 
 Decisions and reasons:
+
 - Start with only `packages/api` and `apps/server`: these boundaries are needed now; later packages remain documented, not empty scaffolds.
 - Public `GET /health` returns exactly `{"status":"ok"}`: non-sensitive liveness, no dependency or settings requirement. Future application auth is separate.
 - Pin Bun 1.4.2, Effect 4.0.3, Alchemy 2.0.0-beta.81, host Effect adapters 4.0.3, TypeScript 7.0.2, Biome 2.5.15, @types/bun 1.4.2; commit lockfile. Registry and installed APIs agree.
@@ -185,24 +201,26 @@ Other-family Claude done-review timed out with no findings/output; its process i
 Reviewed code commit: **`f592c6f1259ae749c1fcba1bba99ce5d03d58df1`** (`feat(foundation): add effect health worker and verification tooling`). The brief rename is100% unchanged. Before commit, frozen install, format, lint, all three TypeScript projects,42 tests and diff checks passed. The code worktree was clean before the final request.
 
 At **02:35:47–02:35:48UTC**, the one authorized final command at that code commit passed:
+
 ```sh
 bun run smoke -- https://kbpod-server-dev-uy3chod3kue5jnxj.nartchome.workers.dev
 ```
+
 It made one anonymous `/health` request, with no redirect/retry, and exited0 after **HTTP200 application/json + shared Health schema + exact one-field object** assertions. Safe output: `Health verified: https://kbpod-server-dev-uy3chod3kue5jnxj.nartchome.workers.dev/health — 200 application/json {"status":"ok"}`. No raw response/header values were retained. This final-request authority is consumed; the Worker remains live. No local restart, redeployment, infrastructure change or publishing occurred.
 
 Hubseq59 approved the **docs-only completion commit containing this section**, followed by offline checks and byte-identity comparison. The actual live GET belongs to `f592c6f1259ae749c1fcba1bba99ce5d03d58df1`; the final docs HEAD inherits it via unchanged application, tooling, dependency and configuration bytes. **No second GET at the docs HEAD is claimed.** Final docs SHA, post-commit checks, clean-state proof and guided-review artifacts are recorded in the local delivery receipt/workstream rather than making this file self-reference its own commit hash.
 
 ### Acceptance and limitations
 
-| Criterion | Evidence |
-|---|---|
-| Reproducible workspace, scripts and boundaries | Frozen install, format/lint and separate API/Worker/Bun typechecks passed; pins/lock unchanged |
-| Real Effect tests and safe diagnostics |42 offline tests passed; real app/router disposal plus shared schema/exact-object checks and negative/privacy coverage |
-| Actual Alchemy-local health | Seq51 passed at advertised localhost1337; forced SIGKILL stop is disclosed; source-write reconstruction confirms unchanged app bytes, **not** a contemporaneous local-runtime attestation |
-| Actual deployed-dev health | Seq55 passed; final committed tooling passed once at code SHA `f592c6f` as recorded above |
-| Project memory | Brief checksum preserved, AGENTS/progress present, installed Pi loader/expansion passed |
-| Independent review | Same-family fresh review passed after one doc-only correction; Claude timed out/no findings |
-| Local delivery | Code commit above; docs-only completion and clean final-head/offline/identity evidence accompany the guided review; no push/PR |
+| Criterion                                      | Evidence                                                                                                                                                                                  |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reproducible workspace, scripts and boundaries | Frozen install, format/lint and separate API/Worker/Bun typechecks passed; pins/lock unchanged                                                                                            |
+| Real Effect tests and safe diagnostics         | 42 offline tests passed; real app/router disposal plus shared schema/exact-object checks and negative/privacy coverage                                                                    |
+| Actual Alchemy-local health                    | Seq51 passed at advertised localhost1337; forced SIGKILL stop is disclosed; source-write reconstruction confirms unchanged app bytes, **not** a contemporaneous local-runtime attestation |
+| Actual deployed-dev health                     | Seq55 passed; final committed tooling passed once at code SHA `f592c6f` as recorded above                                                                                                 |
+| Project memory                                 | Brief checksum preserved, AGENTS/progress present, installed Pi loader/expansion passed                                                                                                   |
+| Independent review                             | Same-family fresh review passed after one doc-only correction; Claude timed out/no findings                                                                                               |
+| Local delivery                                 | Code commit above; docs-only completion and clean final-head/offline/identity evidence accompany the guided review; no push/PR                                                            |
 
 Interactive Pi project trust/menu/reload remains **unverified**; no trust setting was changed or prompt executed. Old bootstrap and first deployed smoke causes remain unproven. Local process stop did not prove graceful cleanup or lease release. No secret value is printed or committed, and no application model/TTS call has occurred.
 
@@ -217,9 +235,11 @@ Chau approved destruction of only `kbpod/dev`'s health Worker and its stage stat
 An initial guard paused on five actual Worker bindings. One additional bounded settings GET (hubseq67) classified all five as the exact `plain_text` runtime metadata names injected by beta81's Worker provider: `ALCHEMY_PHASE`, `ALCHEMY_WORKER_NAME`, `ALCHEMY_STACK_NAME`, `ALCHEMY_STAGE`, and `ALCHEMY_CLOUDFLARE_ACCOUNT_ID`. There were zero unknown/custom names, secret bindings or data-resource references. No binding values or raw response payloads were retained. Their count alone was not evidence of extra infrastructure; classification resolved the concern without changing the target.
 
 Exactly one operator command ran:
+
 ```sh
 ALCHEMY_TUI=1 bun alchemy destroy --stage dev --profile kbpod-dev
 ```
+
 Its native preview contained **1 deletion: `Server (Cloudflare.Worker)`**, no extra resources. Only that same snapshot was confirmed, at14:20:23UTC; the command exited0 at14:20:33UTC. No blanket approval/force/adopt/unlock flags, retry, preliminary deployment or health request was used.
 
 Four bounded authoritative metadata GETs at14:21:29–14:21:39UTC passed: the target Worker was absent, dev resources were empty, `dev` was absent from the stack's stage list, and the shared state API remained version7. The shared state Worker remained present and all other Worker inventory names matched the preflight digest. Shared DOs, Secrets Store and keys were not individually inventoried or targeted; their preservation is supported by the stage-scoped operation and functioning shared API, not a separate full inventory comparison. Other stages had no preflight comparison baseline, so no global stage-inventory equality claim is made.

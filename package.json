@@ -1,34 +1,35 @@
 {
-  "name": "kbpod",
-  "private": true,
-  "type": "module",
-  "packageManager": "bun@1.4.2",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
-  "scripts": {
-    "typecheck": "tsc -p packages/api/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p tsconfig.json",
-    "lint": "biome lint .",
-    "format:check": "biome format .",
-    "format": "biome format --write .",
-    "test": "bun test",
-    "test:infra:local": "bun scripts/infra.ts local",
-    "test:infra:live": "bun scripts/infra.ts live",
-    "smoke": "bun scripts/smoke.ts",
-    "cf": "node ./node_modules/cf/bin/cf"
-  },
-  "dependencies": {
-    "@kbpod/api": "workspace:*",
-    "effect": "4.0.3",
-    "alchemy": "2.0.0-beta.81",
-    "@effect/platform-bun": "4.0.3",
-    "@effect/platform-node": "4.0.3"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.5.15",
-    "@types/bun": "1.4.2",
-    "cf": "1.0.0-beta.14",
-    "typescript": "7.0.2"
-  }
+    "name": "kbpod",
+    "private": true,
+    "type": "module",
+    "packageManager": "bun@1.4.2",
+    "workspaces": [
+        "packages/*",
+        "apps/*"
+    ],
+    "scripts": {
+        "typecheck": "tsc -p packages/api/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p tsconfig.json",
+        "lint": "biome lint .",
+        "format:check": "oxfmt --check .",
+        "format": "oxfmt --write .",
+        "test": "bun test",
+        "test:infra:local": "bun scripts/infra.ts local",
+        "test:infra:live": "bun scripts/infra.ts live",
+        "smoke": "bun scripts/smoke.ts",
+        "cf": "node ./node_modules/cf/bin/cf"
+    },
+    "dependencies": {
+        "@kbpod/api": "workspace:*",
+        "effect": "4.0.3",
+        "alchemy": "2.0.0-beta.81",
+        "@effect/platform-bun": "4.0.3",
+        "@effect/platform-node": "4.0.3"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "2.5.15",
+        "@types/bun": "1.4.2",
+        "cf": "1.0.0-beta.14",
+        "oxfmt": "0.73.0",
+        "typescript": "7.0.2"
+    }
 }

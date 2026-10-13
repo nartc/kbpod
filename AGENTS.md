@@ -8,14 +8,15 @@ Bun 1.4.2 workspaces, TypeScript, Effect 4; no Nx. Exact dependency pins and `bu
 
 - `bun install --frozen-lockfile` — reproducible install.
 - `bun run typecheck` — neutral API, Worker and Bun-tooling projects, no emit.
-- `bun run lint`, `bun run format:check` — non-writing Biome checks.
-- `bun run format` — format maintained code/config (never the brief).
+- `bun run lint` — Biome lint; `bun run format:check` — non-writing oxfmt check.
+- `bun run format` — pinned oxfmt0.73.0, four spaces and100-column wrapping; preserve logical blank lines. Biome formatting is disabled. The brief, lockfile, generated/vendor files and runtime receipts are excluded.
 - `bun test` / `bun run test` — cloud-free tests; do not import the stack or Worker resource.
 - `bun run smoke -- <base-url>` — opt-in, single-request HTTP health assertions; never provisions resources. Failures report only fixed reason/status/media/transport categories, not raw inputs, headers, bodies or exceptions. Exit1 means failure; no retries or redirects.
 - `/next-milestone` in Pi — project prompt, after project trust and `/reload`.
 - `bun run cf <command> [options]` — project-local Cloudflare CLI `cf@1.0.0-beta.14`, explicitly launched with **Node 22.18+**, not Bun. Installation is approved; account/auth/query commands are separately gated. No global install or unpinned `bunx`. See `docs/cloudflare-logs.md`.
 
 Cloud commands are **approval-gated**, not routine checks:
+
 - `bun run test:infra:local` / `bun run test:infra:live` use native Alchemy setup/teardown on fresh isolated stages. Default `bun test` skips them without importing Alchemy. They need explicit per-run authority, private expected-target environment and (for live) a matching successful local run ID. D-7 permits normal same-account state-auth preview recovery and ordinary ignored SDK logs, with `DO_NOT_TRACK=1` and scoped controls. Never inspect/copy/attach/commit raw SDK logs. Detached descendants are not independently attested; observed survivors/failures still stop execution. See `docs/infrastructure-tests.md` for budgets, cleanup-on-failure and limits; command availability is not standing permission.
 - `cf o11y telemetry query` queries historical logs using an API **POST**, not one of the previously approved seven GETs. Its documented API-token permission is **Workers Observability Write** even though it queries retained data. `cf` profiles are independent of Alchemy's `kbpod-dev`; never copy/reuse OAuth secrets implicitly. Live tails create temporary remote sessions and cannot recover old requests.
 - Chau performs any approved login himself. The usual command is `bun alchemy profile edit --add Cloudflare`, but **do not run it yet from this project**: profile discovery can import the stack/build its layers. Accepted D-1 requires dashboard-only ownership preflight, then scoped authorization; a missing-default-entrypoint setup path avoids project stack discovery.

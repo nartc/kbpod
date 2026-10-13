@@ -5,10 +5,10 @@ import Server from "./apps/server/src/worker.ts";
 
 // Even plan/dev can bootstrap remote state. See AGENTS.md before invoking Alchemy.
 export default Alchemy.Stack(
-  "kbpod",
-  { providers: Cloudflare.providers(), state: Cloudflare.state() },
-  Effect.gen(function* () {
-    const server = yield* Server;
-    return { url: server.url };
-  }),
+    "kbpod",
+    { providers: Cloudflare.providers(), state: Cloudflare.state() },
+    Effect.gen(function* () {
+        const server = yield* Server;
+        return { url: server.url };
+    }),
 );

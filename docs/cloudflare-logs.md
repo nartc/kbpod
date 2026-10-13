@@ -17,13 +17,13 @@ The package script explicitly uses `node ./node_modules/cf/bin/cf`. Bun manages 
 
 The failed shared-state bootstrap occurred on **2026-10-12, 19:50–19:55 UTC**, on Worker **`alchemy-state-store`**. Starting a tail now cannot retrieve that old request.
 
-| Tool/path | What it does | Important effects/limits |
-| --- | --- | --- |
-| `cf o11y telemetry query` | Queries retained historical events | API POST query; requires its own approved auth/account and sanitized output handling. Does not deploy the Worker or reproduce the failure. |
-| Dashboard Workers Logs | Views captured historical events/exceptions | Best immediate option while Chau already has the error visible. Share only sanitized exception details. |
-| `wrangler tail alchemy-state-store --format json --status error` | Streams future events | Creates a temporary tail with POST, opens WebSocket, deletes tail on exit. Not a historical query; not installed/executed as part of this work. |
-| Alchemy dedicated state logs | Queries retained state-Worker events; `--tail` switches to streaming | Uses Alchemy profile auth, which can refresh and persist OAuth credentials. Not covered by the diagnostic GET approval. |
-| Generic `alchemy logs` | Resolves a project stack and its resources | Opens a stack session. Avoid against retained partial bootstrap: initialization can resume it. |
+| Tool/path                                                        | What it does                                                         | Important effects/limits                                                                                                                        |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cf o11y telemetry query`                                        | Queries retained historical events                                   | API POST query; requires its own approved auth/account and sanitized output handling. Does not deploy the Worker or reproduce the failure.      |
+| Dashboard Workers Logs                                           | Views captured historical events/exceptions                          | Best immediate option while Chau already has the error visible. Share only sanitized exception details.                                         |
+| `wrangler tail alchemy-state-store --format json --status error` | Streams future events                                                | Creates a temporary tail with POST, opens WebSocket, deletes tail on exit. Not a historical query; not installed/executed as part of this work. |
+| Alchemy dedicated state logs                                     | Queries retained state-Worker events; `--tail` switches to streaming | Uses Alchemy profile auth, which can refresh and persist OAuth credentials. Not covered by the diagnostic GET approval.                         |
+| Generic `alchemy logs`                                           | Resolves a project stack and its resources                           | Opens a stack session. Avoid against retained partial bootstrap: initialization can resume it.                                                  |
 
 [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) stores invocation/custom logs and exceptions, with a documented **maximum retention of 7 days**. Capture must have been enabled when the event occurred; sampling and truncation can omit information. New Workers default to observability enabled according to the docs, but that does not prove this Worker's actual settings. Turning on `observability.enabled` and redeploying is a mutation, not retrieval, and cannot recover an uncaptured past event.
 

@@ -1,15 +1,15 @@
 {
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ESNext"],
-    "types": ["bun"]
-  },
-  "include": [
-    "alchemy.run.ts",
-    "scripts/**/*.ts",
-    "tests/**/*.ts",
-    "apps/*/test/**/*.ts",
-    "packages/*/test/**/*.ts",
-    "packages/api/src/**/*.ts"
-  ]
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "lib": ["ESNext"],
+        "types": ["bun"]
+    },
+    "include": [
+        "alchemy.run.ts",
+        "scripts/**/*.ts",
+        "tests/**/*.ts",
+        "apps/*/test/**/*.ts",
+        "packages/*/test/**/*.ts",
+        "packages/api/src/**/*.ts"
+    ]
 }

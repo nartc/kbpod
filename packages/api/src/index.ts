@@ -6,7 +6,7 @@ import * as HttpApiGroup from "effect/http-api/HttpApiGroup";
 export const Health = Schema.Struct({ status: Schema.Literal("ok") });
 
 export const HealthGroup = HttpApiGroup.make("health").add(
-  HttpApiEndpoint.get("get", "/health", { success: Health }),
+    HttpApiEndpoint.get("get", "/health", { success: Health }),
 );
 
 export const KbpodApi = HttpApi.make("KbpodApi").add(HealthGroup);
