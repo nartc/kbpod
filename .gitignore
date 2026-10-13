@@ -1,1 +1,9 @@
 node_modules/
+.hub/
+.alchemy/
+.env
+.env.*
+!.env.example
+dist/
+coverage/
+*.tsbuildinfo

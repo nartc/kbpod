@@ -1,0 +1,10 @@
+{
+  "name": "@kbpod/server",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@kbpod/api": "workspace:*",
+    "alchemy": "2.0.0-beta.81",
+    "effect": "4.0.3"
+  }
+}
