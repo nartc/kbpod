@@ -10,6 +10,7 @@ Supply the approved account ID and existing shared-state origin through **privat
 
 - `KBPOD_INFRA_APPROVED_COMMIT`: the approved tested snapshot's full SHA (review findings and later parent-verified changes are recorded separately). The checkout must match and be clean before any profile refresh or cloud request.
 - `KBPOD_INFRA_ACCOUNT_ID`: expected account, compared with both `kbpod-dev` profile/cache and the account API.
+- `KBPOD_INFRA_ACCOUNT_NAME`: previously confirmed account name, checked in the same preflight GET; never written to receipts.
 - `KBPOD_INFRA_STATE_ORIGIN`: expected existing HTTPS state Worker origin, compared with the private cache.
 - For live only, `KBPOD_INFRA_LOCAL_RUN`: the prior successful local run's 12-hex ID. Its commit, account, origin and executable source hashes must match.
 

@@ -62,6 +62,9 @@ export function readCredentials(accountId: string, origin: string) {
   return {
     accountId,
     origin,
+    ...(process.env.KBPOD_INFRA_ACCOUNT_NAME
+      ? { expectedAccountName: process.env.KBPOD_INFRA_ACCOUNT_NAME }
+      : {}),
     access: profile.values.access,
     expires: profile.values.expires,
     stateToken: cache.authToken,
@@ -262,8 +265,11 @@ export class Metadata {
     );
   }
   async account() {
+    const account = object(this.result(await this.get("account", "")));
     requireThat(
-      object(this.result(await this.get("account", ""))).id === this.credentials.accountId,
+      account.id === this.credentials.accountId &&
+        (this.credentials.expectedAccountName === undefined ||
+          account.name === this.credentials.expectedAccountName),
       "target_mismatch",
     );
   }

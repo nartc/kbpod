@@ -97,6 +97,7 @@ export async function runInfrastructure(input: readonly string[]) {
     receipt.commit = expectedCommit;
     const account = process.env.KBPOD_INFRA_ACCOUNT_ID ?? "";
     const origin = process.env.KBPOD_INFRA_STATE_ORIGIN ?? "";
+    requireThat(Boolean(process.env.KBPOD_INFRA_ACCOUNT_NAME), "invalid_configuration");
     let credentials = readCredentials(account, origin);
     if (mode === "live") {
       const localId = process.env.KBPOD_INFRA_LOCAL_RUN ?? "";

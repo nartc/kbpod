@@ -327,6 +327,20 @@ describe("authoritative metadata guards (injected offline responses)", () => {
     expect(JSON.stringify(observations)).not.toContain(secret);
     await expect(client.version()).rejects.toThrow("metadata_budget");
   });
+  test("account name is checked without adding a request or retaining its value", async () => {
+    const client = new Metadata(
+      { ...credentials, expectedAccountName: "approved-fixture-account" },
+      1,
+      signal(),
+      undefined,
+      fixture({
+        [`/accounts/${account}`]: { success: true, result: { id: account, name: secret } },
+      }),
+    );
+    await expect(client.account()).rejects.toThrow("target_mismatch");
+    expect(client.observations).toHaveLength(1);
+    expect(JSON.stringify(client.observations)).not.toContain(secret);
+  });
   test("preexisting stage fails before native deployment", async () => {
     const client = new Metadata(
       credentials,
