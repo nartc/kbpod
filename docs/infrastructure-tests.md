@@ -34,6 +34,8 @@ The separate, gated `tests/infra/recovery.entry.ts` is outside default discovery
 
 Only verified recovery success permits one replacement fresh local lifecycle; only its full success permits one fresh live lifecycle at the **same corrected tested commit**. No original claim/receipt is reset, no adoption/sweep or shared infrastructure cleanup is authorized. The original independent review remains NOT READY under its old criteria; this is parent verification under approved amendments, not an independent re-review.
 
+The approved D-8 sequence subsequently passed at `fbfd9ce`: recovery `47b423e95ecb`, replacement local `609d2ed5da29`, and live `065d144b6679`. All targets were removed and all operation claims consumed. These are historical outcomes, **not permission to rerun the commands**. See `docs/progress.md` for counts, timestamps and remaining evidence limits.
+
 ## Bounds and failure behavior
 
 - Preflight: 60 seconds, six metadata GETs. Necessary own OAuth refresh is allowed once; the remaining credential lifetime must cover the run. beta81's registration-only Cloudflare auth layer is not publicly exported, so the helper uses its pinned installed declaration/source without building providers/state or falling back to browser login.

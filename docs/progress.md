@@ -12,9 +12,9 @@
 - [ ] 7. Follow-ups, marks, recaps
 - [ ] 8. Hardening and production
 
-## Current state — 2026-10-13 after approved dev teardown
+## Current state — 2026-10-13 after native lifecycle verification
 
-Milestone0's historical health checks remain valid evidence of the unchanged executable snapshot. The dev Worker and `kbpod/dev` stage state are now **intentionally absent**, not a running endpoint. Shared Alchemy state infrastructure was outside the teardown target and its API remains functional. Shipping is held. Chau subsequently approved D-6's native provision→assert→teardown harness and bounded local/live runs; the first native local run subsequently passed provisioning/health but failed its cleanup guard. Owned local stage `e2e-local-22bfea207d84` still had resources at postcheck; D-8 subsequently granted one narrowly bounded recovery and conditional replacement verification; execution results are recorded separately below. The conditional live run did not start. The existing manual runtime checks must not be represented as those new automated lifecycle results.
+Milestone0's historical health checks remain historical evidence, separate from the new native lifecycle results. The dev Worker and `kbpod/dev` remain **intentionally absent**. After the first native local cleanup guard failed, approved D-8 recovery removed its remaining stage. Replacement **Alchemy-local and live provision→health→native teardown lifecycles both passed at `fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Their Workers/stages were removed, unrelated inventories matched, and the shared state API remained functional. All D-8 operational claims are consumed; no further cloud request or retry is authorized. Publishing is held. S-1 formatting remains separate and cannot inherit runtime byte-identity evidence after changing executable files.
 
 ## 2026-10-13 — D-8 approved correction and exact recovery preparation
 
@@ -24,8 +24,26 @@ Chau approved the combined proposal in Inbox `msg_01M4V89BJ8EJHHZK6MCEYE7C45`, r
 - Corrected guard requires an empty state-binding array; all other ownership predicates and the separate Worker settings binding policy remain. Fixed allowlisted field/shape diagnostics survive native wrappers and supervisor receipt parsing without raw values/errors.
 - Positive fixtures use type-only public SDK declarations (the Workers directory export, not an unsupported deeper subpath), complete state/Worker fields and JSON omission of undefined properties. No runtime Alchemy import in default tests.
 - Added explicitly gated, exact-target cleanup-only native hooks with fresh claims/provenance, beforeAll inspection, afterAll ownership recheck, at most one destroy, zero deploy/health calls, and bounded postverification. Failed inspection/recheck/destroy stops the sequence.
-- Offline verification currently **114 passed, one infrastructure skip, zero failed**; format/lint and all three typechecks pass. These include hook-level diagnostic propagation and six isolated recovery scenarios. Final frozen-install/commit checks precede any recovery operation.
-- No D-8 cloud operation has run at this checkpoint. Original local `22bfea207d84` stays failed with nonempty stage state at its last postcheck; no live run has occurred. Original independent review status and D-7 logging/process/auth limitations remain unchanged. S-1 and publishing remain held.
+- Corrected executable commit: **`fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**. Post-commit frozen install, format, lint, three typechecks and diff checks passed. Offline verification: **114 passed, one infrastructure skip, zero failed**, 723 assertions, including six isolated recovery scenarios.
+- These checks preceded all D-8 operations. The original local `22bfea207d84` remains failed; later recovery does not rewrite its outcome. Original independent review status and D-7 logging/process/auth limitations remain unchanged.
+
+## 2026-10-13 — D-8 recovery and native local/live results
+
+All three operations used the same clean tested executable commit **`fbfd9cefd1a137bf50f5a55253d13f844c5985cb`**, with matching source/account/origin identities. Each result was consumed once with a separate handled marker. No further cloud request, retry or cleanup is authorized.
+
+| Operation | UTC window | Outcome | Explicit metadata GETs | Health GETs | OAuth refresh POSTs |
+| --- | --- | --- | --- | --- | --- |
+| Recovery `47b423e95ecb` of `e2e-local-22bfea207d84` | 18:46:17–18:46:23 | PASS | 14 | 0 | 1 |
+| Replacement local `609d2ed5da29` | 18:48:28–18:48:35 | PASS | 13 | 1 | 0 |
+| Live `065d144b6679` | 18:50:36–18:51:07 | PASS | 15 | 5 | 0 |
+
+Recovery inspected the sole completed local Server and rechecked ownership before **one native destroy**, with no deployment or health request. Current state passed the corrected empty-array guard; this does not prove which field failed in the original unretained response. Postchecks proved the old stage absent with zero resources. Original failed run/child/receipt hashes were verified unchanged.
+
+Replacement local passed native deployment, its first exact200 JSON health response and native teardown. Live passed deployment, then received four permitted404 HTML responses before its fifth health GET passed the exact shared JSON contract. There was no redundant successful GET. Live cleanup established the sole owned Server's immutable ID and exactly five generated plain-text settings bindings, with no custom, secret or data-reference bindings, before native destroy.
+
+All three postchecks confirmed target Worker/stage absence, zero owned resources, matching unrelated Worker/stage inventories and functioning shared version7/API. The observed native test groups were absent. Local port1337 was absent before recovery and after the local runs; no local listener applies to live mode. Native adapters completed with their documented ignored-finalizer-error limitation. Detached descendants, exact native provider/auth request counts, preview expiry/deletion and individual shared DO/Secrets Store/key inventories remain **not independently attested**.
+
+Raw SDK logs were not inspected/copied/committed. Safe operator and phase receipts remain under ignored `.hub/` and `.alchemy/health-tests/`. The original independent review remains NOT READY under its original criteria; approved D-7 criteria changes and parent-verified fixes are not an independent re-review. D-6 native lifecycle acceptance is now complete under the approved D-7/D-8 amendments. Subsequent documentation-only commits retain these executable bytes; S-1 formatting must not claim the same byte identity.
 
 ## 2026-10-12 — foundation plan approved
 
@@ -206,7 +224,7 @@ Chau approved the combined D-6 scope in Inbox `msg_01M4TY8CKQ1KC5W5F9Z6DJ3QC3` (
 
 Added native `Test.make` / `beforeAll(deploy(Stack))` / `afterAll(destroy(Stack))` registration, separate local/live scripts, fresh-stage and ownership guards, explicit readiness/deadline budgets and safe independent phase receipts. Default discovery skips the infrastructure branch without importing Alchemy; a subprocess fixture forbids Alchemy imports and fetch to verify that boundary. Nine isolated mocked native-boundary fixtures cover success, setup/assertion/cleanup/ownership-guard failure, unsettled provisioning and deploy/health/cleanup deadlines. They prove our registration/recording behavior, not actual infrastructure creation or deletion. `docs/infrastructure-tests.md` records the exact run scope and limitations.
 
-Offline integration initially caught an incorrect expected diagnostic prefix and a missing API URL prefix in test fixtures; both were corrected. The registration-only Cloudflare auth layer is not a public package export: the narrowly scoped refresh helper uses the installed beta81 declaration/source, not a provider/state initialization or login fallback. No app/API/stack resource/dependency bytes changed. The independent review outcome and approved follow-up are below; actual native local/live outcomes remain pending. No lifecycle cloud operation has been performed yet.
+Offline integration initially caught an incorrect expected diagnostic prefix and a missing API URL prefix in test fixtures; both were corrected. The registration-only Cloudflare auth layer is not a public package export: the narrowly scoped refresh helper uses the installed beta81 declaration/source, not a provider/state initialization or login fallback. No app/API/stack resource/dependency bytes changed. The independent review outcome and approved follow-up are below; at that implementation checkpoint, native runs had not yet started. Their later outcomes are recorded above and below.
 
 ## 2026-10-13 — D-7 approved: supported native controls and explicit limits
 
@@ -228,6 +246,6 @@ Executed the ONE approved local invocation at clean tested commit **`aef0700e940
 - The observed Bun test group and local health listener on1337 were absent. Native host finalization is not independently confirmed on this failed exit; detached descendants remain not independently attested under D-7. No universal process-cleanup claim.
 - One own-profile OAuth refresh POST, one health GET and12 explicit metadata GETs were recorded (6preflight,3cleanup guard,3postcheck). Native engine/auth request counts and preview expiry are not individually attested. No raw SDK logs were inspected or copied.
 
-Stopped: **no live run, retry, additional cloud query, sweep or recovery command**. Safe recovery identifiers: stack `kbpod`, stage `e2e-local-22bfea207d84`, resource `Server`, profile `kbpod-dev`. The original operator/child/receipt evidence and handled marker are preserved under ignored `.hub/` and `.alchemy/health-tests/22bfea207d84/`. Hubseq75 requests offline source diagnosis and a new combined recovery/fix/reverification proposal; it does not authorize cloud recovery or replacement runs. D-6 lifecycle acceptance remains incomplete.
+Stopped: **no live run, retry, additional cloud query, sweep or recovery command**. Safe recovery identifiers: stack `kbpod`, stage `e2e-local-22bfea207d84`, resource `Server`, profile `kbpod-dev`. The original operator/child/receipt evidence and handled marker are preserved under ignored `.hub/` and `.alchemy/health-tests/22bfea207d84/`. Hubseq75 requests offline source diagnosis and a new combined recovery/fix/reverification proposal; it does not authorize cloud recovery or replacement runs. At this failed-run checkpoint, D-6 lifecycle acceptance was incomplete. The later D-8 outcomes above address recovery and replacement verification without altering this failure.
 
 Chau also queued S-1 (hubseq70): replace formatting with exact-pinned official oxfmt, tabWidth4, sensible code line breaks, retain Biome lint. It starts only after the D-6 result is reported, in a separate commit. It grants no new cloud/publishing permission, and formatting executable files will invalidate byte-identity inheritance from the D-6 tested snapshot.
