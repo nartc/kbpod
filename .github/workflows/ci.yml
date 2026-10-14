@@ -1,0 +1,158 @@
+name: CI
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened]
+
+permissions:
+    contents: read
+
+jobs:
+    offline:
+        name: Offline checks
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+              with:
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+              with:
+                  bun-version: 1.4.2
+            - run: bun install --frozen-lockfile
+            - run: bun run format:check
+            - run: bun run lint
+            - run: bun run typecheck
+            - run: bun run test:unit
+
+    cloud:
+        name: Cloud integration
+        needs: offline
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
+        concurrency:
+            group: kbpod-cloud-integration
+            cancel-in-progress: false
+        steps:
+            # A step failure is deliberate: skipping this job would look green to rulesets.
+            - name: Reject untrusted PRs
+              id: trust
+              shell: bash
+              env:
+                  HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+                  BASE_REPOSITORY: ${{ github.repository }}
+                  AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+                  ACTOR: ${{ github.actor }}
+                  TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+              run: |
+                  if [[ -z "$HEAD_REPOSITORY" || "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ||
+                        "$AUTHOR_TYPE" != User || -z "$ACTOR" || -z "$TRIGGERING_ACTOR" ||
+                        "$ACTOR" == *'[bot]' || "$TRIGGERING_ACTOR" == *'[bot]' ]]; then
+                      echo '::error::Cloud integration not run: untrusted PR. Promote reviewed changes to a trusted same-repository human PR.'
+                      exit 1
+                  fi
+            - name: Set isolated run paths
+              id: paths
+              shell: bash
+              env:
+                  ALCHEMY_HOME: ${{ runner.temp }}/kbpod-alchemy-${{ github.run_id }}-${{ github.run_attempt }}
+                  KBPOD_INTEGRATION_REPORT: ${{ runner.temp }}/kbpod-integration-${{ github.run_id }}-${{ github.run_attempt }}.txt
+              run: |
+                  printf 'ALCHEMY_HOME=%s\nKBPOD_INTEGRATION_REPORT=%s\n' \
+                      "$ALCHEMY_HOME" "$KBPOD_INTEGRATION_REPORT" >> "$GITHUB_ENV"
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+              with:
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+              with:
+                  bun-version: 1.4.2
+            - run: bun install --frozen-lockfile
+            - name: Require fresh state paths
+              id: fresh
+              shell: bash
+              run: |
+                  if [[ "$ALCHEMY_HOME" != /* || -e .alchemy || -L .alchemy ||
+                        -e "$ALCHEMY_HOME" || -L "$ALCHEMY_HOME" ||
+                        -e "$KBPOD_INTEGRATION_REPORT" || -L "$KBPOD_INTEGRATION_REPORT" ]]; then
+                      echo '::error::Cloud integration not run: state or report paths are not fresh.'
+                      exit 1
+                  fi
+            - name: Native cloud integration
+              id: integration
+              shell: bash
+              env:
+                  CLOUDFLARE_ACCOUNT_ID: 7cae6ad8270c12d5328aebe85fc0528a
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  KBPOD_TEST_TARGET: cloud
+                  CI: "true"
+              run: |
+                  if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+                      echo '::error::Cloud integration not run: CLOUDFLARE_API_TOKEN is missing.'
+                      exit 1
+                  fi
+                  # Native command: never publish or parse SDK stdout/stderr.
+                  set +e
+                  bun run test:integration >/dev/null 2>&1
+                  status=$?
+                  printf 'Native integration exit=%s\n' "$status"
+                  exit "$status"
+            - name: Validate safe integration evidence
+              id: evidence
+              if: always()
+              shell: bash
+              env:
+                  NATIVE_OUTCOME: ${{ steps.integration.outcome }}
+              run: |
+                  python3 - <<'PY'
+                  import os
+                  from pathlib import Path
+                  import re
+                  import sys
+
+                  def fail():
+                      print('::error::Integration evidence missing, malformed or incomplete; native lifecycle not verified.')
+                      sys.exit(1)
+
+                  report_path = os.environ.get('KBPOD_INTEGRATION_REPORT')
+                  summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
+                  if not report_path or not summary_path:
+                      fail()
+                  path = Path(report_path)
+                  try:
+                      if path.is_symlink() or not path.is_file():
+                          fail()
+                      with path.open('rb') as report:
+                          data = report.read(8193)
+                      if not data or len(data) > 8192 or not data.endswith(b'\n'):
+                          fail()
+                      lines = data.decode('ascii').split('\n')[:-1]
+                  except (OSError, UnicodeError):
+                      fail()
+
+                  grammar = re.compile(
+                      r'stage=it-cloud-[a-f0-9]{12}|'
+                      r'phase=(deploy|health|destroy):(started|passed|failed|interrupted)|'
+                      r'failure=(auth_or_state|state|unknown)|'
+                      r'destroy=blocked_unsettled_deploy|'
+                      r'Health verification failed: reason=(timeout|transport|http_status|content_type|invalid_json|schema_mismatch|unexpected_fields|unexpected)'
+                      r'( status=[1-5][0-9]{2})?( contentType=(json|html|text|other|missing))?'
+                      r'( transport=(timeout|dns|tls|connection|other))?'
+                  )
+                  if not all(grammar.fullmatch(line) for line in lines):
+                      fail()
+                  if not lines[0].startswith('stage=') or sum(line.startswith('stage=') for line in lines) != 1:
+                      fail()
+
+                  expected = [f'phase={phase}:{outcome}' for phase in ('deploy', 'health', 'destroy') for outcome in ('started', 'passed')]
+                  passed = os.environ.get('NATIVE_OUTCOME') == 'success' and lines[1:] == expected
+                  try:
+                      with open(summary_path, 'a', encoding='utf-8') as summary:
+                          summary.write('## Native cloud integration\n\n```text\n' + '\n'.join(lines) + '\n```\n\n')
+                          summary.write('SDK-reported teardown; not independent removal evidence.\n')
+                          if not passed:
+                              summary.write('**Lifecycle not verified. Resources may remain; no automatic retry or cleanup.**\n')
+                  except OSError:
+                      fail()
+                  if not passed:
+                      fail()
+                  print('Native lifecycle passed with complete safe evidence; removal not independently audited.')
+                  PY

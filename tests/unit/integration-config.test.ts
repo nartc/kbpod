@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { integrationTarget } from "../integration/config.ts";
+import { integrationReportPath, integrationTarget } from "../integration/config.ts";
 
 test.each(["local", "cloud"] as const)(
     "selects %s without reading credentials or importing Alchemy",
@@ -28,3 +28,19 @@ test("rejects an SDK override instead of silently changing the requested target"
 test("requires the supported telemetry opt-out", () => {
     expect(() => integrationTarget({ KBPOD_TEST_TARGET: "local" })).toThrow();
 });
+
+test("reporting is optional and accepts an explicit absolute path", () => {
+    expect(integrationReportPath({})).toBeUndefined();
+    expect(integrationReportPath({ KBPOD_INTEGRATION_REPORT: "/tmp/report.txt" })).toBe(
+        "/tmp/report.txt",
+    );
+});
+
+test.each(["", "report.txt", "../report.txt", "/tmp/invalid\0path"])(
+    "rejects invalid report path without reflecting its value: %s",
+    (path) => {
+        expect(() => integrationReportPath({ KBPOD_INTEGRATION_REPORT: path })).toThrow(
+            "Integration report path must be absolute.",
+        );
+    },
+);

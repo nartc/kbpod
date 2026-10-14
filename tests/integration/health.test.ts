@@ -1,13 +1,20 @@
+import { appendFileSync } from "node:fs";
 import * as Test from "alchemy/Test/Bun";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import * as References from "effect/References";
 import Stack from "../../alchemy.run.ts";
 import { formatHealthFailure, waitForHealth } from "../health-check.ts";
-import { integrationTarget } from "./config.ts";
+import { integrationReportPath, integrationTarget } from "./config.ts";
+import { deploymentSettlement, integrationReport } from "./report.ts";
 
 const target = integrationTarget(process.env);
 const stage = `it-${target}-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+const reportPath = integrationReportPath(process.env);
+const report = integrationReport(stage, (line) => {
+    if (reportPath !== undefined) appendFileSync(reportPath, line, { mode: 0o600 });
+});
+const deployment = deploymentSettlement();
 const { test, beforeAll, afterAll, deploy, destroy } = Test.make({
     providers: Cloudflare.providers(),
     state: Cloudflare.state(),
@@ -25,8 +32,13 @@ const quiet = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     );
 
 console.info(`Integration target=${target} stage=${stage}`);
-const stack = beforeAll(deploy(Stack).pipe(quiet), { timeout: 300_000 });
-afterAll(destroy(Stack).pipe(quiet), { timeout: 180_000 });
+const stack = beforeAll(deploy(Stack).pipe(quiet, deployment.track, report.observe("deploy")), {
+    timeout: 300_000,
+});
+afterAll(
+    deployment.cleanup(destroy(Stack).pipe(quiet, report.observe("destroy")), report.unsettled()),
+    { timeout: 180_000 },
+);
 
 test(
     "GET /health returns the exact shared contract",
@@ -52,8 +64,9 @@ test(
             return yield* Effect.fail(new Error("Unexpected integration health URL."));
         }
         yield* waitForHealth(url).pipe(
+            Effect.tapError(report.healthFailure),
             Effect.mapError((error) => new Error(formatHealthFailure(error))),
         );
-    }).pipe(quiet),
+    }).pipe(quiet, report.observe("health")),
     { timeout: 75_000 },
 );
