@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 // Pure configuration: importing this helper never imports Alchemy or reads credentials.
 export function integrationTarget(env: Record<string, string | undefined>): "local" | "cloud" {
     const target = env.KBPOD_TEST_TARGET;
@@ -11,4 +13,12 @@ export function integrationTarget(env: Record<string, string | undefined>): "loc
         throw new Error("Set DO_NOT_TRACK=1 for native integration tests.");
     }
     return target;
+}
+
+export function integrationReportPath(env: Record<string, string | undefined>): string | undefined {
+    const path = env.KBPOD_INTEGRATION_REPORT;
+    if (path !== undefined && (!isAbsolute(path) || path.includes("\0"))) {
+        throw new Error("Integration report path must be absolute.");
+    }
+    return path;
 }
