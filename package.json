@@ -1,0 +1,34 @@
+{
+    "name": "kbpod",
+    "private": true,
+    "type": "module",
+    "packageManager": "bun@1.4.2",
+    "workspaces": [
+        "packages/*",
+        "apps/*"
+    ],
+    "scripts": {
+        "typecheck": "tsc -p packages/api/tsconfig.json && tsc -p apps/server/tsconfig.json && tsc -p tsconfig.json",
+        "lint": "oxlint --ignore-path .gitignore .",
+        "format:check": "oxfmt --check .",
+        "format": "oxfmt --write .",
+        "test": "bun test",
+        "test:unit": "bun test",
+        "test:integration": "DO_NOT_TRACK=1 bun test ./tests/integration/health.test.ts",
+        "cf": "node ./node_modules/cf/bin/cf"
+    },
+    "dependencies": {
+        "@kbpod/api": "workspace:*",
+        "effect": "4.0.3",
+        "alchemy": "2.0.0-beta.81",
+        "@effect/platform-bun": "4.0.3",
+        "@effect/platform-node": "4.0.3"
+    },
+    "devDependencies": {
+        "@types/bun": "1.4.2",
+        "cf": "1.0.0-beta.14",
+        "oxfmt": "0.73.0",
+        "oxlint": "1.88.0",
+        "typescript": "7.0.2"
+    }
+}

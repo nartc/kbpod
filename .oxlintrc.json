@@ -1,0 +1,55 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "plugins": ["unicorn", "typescript", "oxc", "import"],
+    "categories": {
+        "correctness": "error",
+        "suspicious": "warn"
+    },
+    "rules": {
+        "no-unused-vars": "warn",
+        "eqeqeq": ["error", "always", { "null": "ignore" }],
+        "prefer-const": "warn",
+        "typescript/consistent-type-imports": "warn",
+        "typescript/no-explicit-any": "warn",
+        "typescript/no-non-null-assertion": "warn",
+        "import/no-duplicates": "warn"
+    },
+    "ignorePatterns": [
+        "**/node_modules/**",
+        ".hub/**",
+        ".alchemy/**",
+        ".env*",
+        "**/dist/**",
+        "**/coverage/**",
+        "**/*.tsbuildinfo",
+        "docs/brief.md",
+        "kbpod-prompt.md"
+    ],
+    "overrides": [
+        {
+            "files": ["packages/api/src/**/*.ts", "apps/server/src/**/*.ts"],
+            "rules": {
+                "no-restricted-imports": [
+                    "error",
+                    {
+                        "patterns": [
+                            {
+                                "group": [
+                                    "node:*",
+                                    "bun",
+                                    "bun:*",
+                                    "@effect/platform-bun",
+                                    "@effect/platform-bun/**",
+                                    "@effect/platform-node",
+                                    "@effect/platform-node/**"
+                                ],
+                                "caseSensitive": true,
+                                "message": "Keep Bun/Node adapters in host tooling, not the shared API or Worker."
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    ]
+}

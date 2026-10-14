@@ -1,0 +1,14 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "lib": ["ESNext"],
+        "types": ["bun"]
+    },
+    "include": [
+        "alchemy.run.ts",
+        "tests/**/*.ts",
+        "apps/*/test/**/*.ts",
+        "packages/*/test/**/*.ts",
+        "packages/api/src/**/*.ts"
+    ]
+}
