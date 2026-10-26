@@ -1,0 +1,399 @@
+name: One-shot existing-state authentication
+
+on:
+    push:
+        branches: [ci/state-auth-once-38747601148]
+
+permissions:
+    contents: read
+concurrency:
+    group: kbpod-state-auth-once
+    cancel-in-progress: false
+
+jobs:
+    probe:
+        if: >-
+            github.repository == 'nartc/kbpod' &&
+            github.ref == 'refs/heads/ci/state-auth-once-38747601148' &&
+            github.event.created == true && github.event.deleted == false &&
+            github.event.forced == false && github.run_attempt == '1' &&
+            github.actor == 'nartc' && github.triggering_actor == 'nartc'
+        runs-on: ubuntu-24.04
+        timeout-minutes: 5
+        env:
+            CI: "true"
+            DO_NOT_TRACK: "1"
+            ALCHEMY_PROFILE: kbpod-dev
+            ALCHEMY_TEST_DEV: "false"
+        steps:
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+              with:
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+              with:
+                  bun-version: 1.4.2
+                  no-cache: true
+            - name: Require isolated inputs
+              run: |
+                  set -euo pipefail
+                  [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+                  [[ "$RUNNER_TEMP" == /* && "$RUNNER_TEMP" != *$'\n'* ]]
+                  export ALCHEMY_HOME="$RUNNER_TEMP/kbpod-state-home-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+                  export KBPOD_STATE_REPORT="$RUNNER_TEMP/kbpod-state-report-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.txt"
+                  KBPOD_EMPTY_PATH="$RUNNER_TEMP/kbpod-state-path-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+                  KBPOD_USER_HOME="$RUNNER_TEMP/kbpod-state-user-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+                  set -euo pipefail
+                  fail() { printf '%s\n' '::error::Isolated diagnostic precondition failed.'; exit 1; }
+                  [[ "$ALCHEMY_HOME" == /* && "$KBPOD_STATE_REPORT" == /* ]] || fail
+                  for path in "$ALCHEMY_HOME" "$KBPOD_STATE_REPORT" .alchemy; do
+                      [[ ! -e "$path" && ! -L "$path" ]] || fail
+                  done
+                  for path in .env*; do
+                      [[ "$path" == .env.example ]] && continue
+                      [[ ! -e "$path" && ! -L "$path" ]] || fail
+                  done
+                  for path in "$KBPOD_EMPTY_PATH" "$KBPOD_USER_HOME" .generated-state-support.ts .generated-state-auth.test.ts; do
+                      [[ ! -e "$path" && ! -L "$path" ]] || fail
+                  done
+                  [[ -x /usr/bin/timeout && -x /usr/bin/env ]] || fail
+                  KBPOD_BUN=$(command -v bun)
+                  [[ "$KBPOD_BUN" == /* && "$KBPOD_BUN" != *$'\n'* && -x "$KBPOD_BUN" ]] || fail
+                  mkdir -m 500 "$KBPOD_EMPTY_PATH"
+                  mkdir -m 700 "$KBPOD_USER_HOME"
+                  printf 'ALCHEMY_HOME=%s\nKBPOD_STATE_REPORT=%s\nKBPOD_EMPTY_PATH=%s\nKBPOD_USER_HOME=%s\nKBPOD_BUN=%s\n' \
+                      "$ALCHEMY_HOME" "$KBPOD_STATE_REPORT" "$KBPOD_EMPTY_PATH" "$KBPOD_USER_HOME" "$KBPOD_BUN" >> "$GITHUB_ENV"
+            - name: Install without Cloudflare credentials
+              run: bun install --frozen-lockfile
+            - name: Generate temporary native probe
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  cat > .generated-state-support.ts <<'TS_SUPPORT'
+                  import * as Cause from "effect/Cause";
+                  import * as Data from "effect/Data";
+                  import * as Effect from "effect/Effect";
+                  import * as Exit from "effect/Exit";
+                  import * as Schema from "effect/Schema";
+
+                  const decodeVersion = Schema.decodeUnknownSync(Schema.Struct({ version: Schema.Number }));
+
+                  export const reasons = [
+                      "state_probe_unavailable", "state_version_mismatch", "no_secrets_store",
+                      "preview_setup", "preview_http", "secret_read", "state_auth_rejected",
+                      "access_blocked", "prompt_required", "auth_config", "state_store", "unknown",
+                  ] as const;
+                  type Reason = typeof reasons[number];
+                  type Phase = "github_version" | "sdk_state";
+                  const record = (value: unknown): value is Record<string, unknown> =>
+                      typeof value === "object" && value !== null;
+                  const status = (value: unknown): number => typeof value === "number" &&
+                      Number.isInteger(value) && value >= 100 && value <= 599 ? value : 0;
+
+                  export class VersionFailure extends Data.TaggedError("VersionFailure")<{
+                      readonly reason: "state_probe_unavailable" | "state_version_mismatch";
+                      readonly http: number;
+                  }> {}
+
+                  export function classify(cause: Cause.Cause<unknown>): { reason: Reason; http: number } {
+                      try {
+                          const error: unknown = Cause.squash(cause);
+                          if (!record(error)) return { reason: "unknown", http: 0 };
+                          const tag = error._tag;
+                          if (tag === "VersionFailure" && (error.reason === "state_probe_unavailable" ||
+                              error.reason === "state_version_mismatch")) {
+                              return { reason: error.reason, http: status(error.http) };
+                          }
+                          if (tag === "StateStoreError") return { reason: "state_store", http: 0 };
+                          if (tag === "AccessError") return { reason: "access_blocked", http: 0 };
+                          if (tag === "NonInteractiveTerminal" || tag === "TerminalCancelled") {
+                              return { reason: "prompt_required", http: 0 };
+                          }
+                          if (tag !== "AuthError" || typeof error.message !== "string") {
+                              return { reason: "unknown", http: 0 };
+                          }
+                          const message = error.message;
+                          if (message.startsWith("Cloudflare State store not found.")) {
+                              return { reason: "state_probe_unavailable", http: 0 };
+                          }
+                          if (message.startsWith("Cloudflare State store is out of date ")) {
+                              return { reason: "state_version_mismatch", http: 0 };
+                          }
+                          if (message === "Cloudflare State store authentication failed, after refreshing credentials.") {
+                              return { reason: "state_auth_rejected", http: 0 };
+                          }
+                          if (message === "No Secrets Store found on this account. Deploy the state store first.") {
+                              return { reason: "no_secrets_store", http: 0 };
+                          }
+                          if (message === "Edge-preview secret read failed: Failed to create edge preview session") {
+                              let access = false;
+                              try { access = record(error.cause) && error.cause._tag === "AccessError"; } catch { /* no raw cause */ }
+                              return { reason: access ? "access_blocked" : "preview_setup", http: 0 };
+                          }
+                          const probe = /^Edge-preview secret read failed: Secret probe returned ([1-5][0-9]{2}):/.exec(message);
+                          if (probe) return { reason: "preview_http", http: status(Number(probe[1])) };
+                          if (message === "Edge-preview secret read failed: Failed to read secret") {
+                              return { reason: "secret_read", http: 0 };
+                          }
+                          if (message.startsWith("Missing required env:") ||
+                              message.startsWith("Could not read optional env:") ||
+                              message.startsWith("Cloudflare CI credentials not found.") ||
+                              message.startsWith("Cloudflare account ID is missing")) {
+                              return { reason: "auth_config", http: 0 };
+                          }
+                      } catch { /* Getters and unknown causes must never escape into output. */ }
+                      return { reason: "unknown", http: 0 };
+                  }
+
+                  export function makeReport(append: (line: string) => void) {
+                      let bytes = 0;
+                      const write = (line: string) => {
+                          bytes += line.length + 1; // every generated line is fixed ASCII
+                          if (bytes > 8192) throw new Error("Diagnostic report limit exceeded.");
+                          append(line + "\n");
+                      };
+                      write("probe=state_auth");
+                      return {
+                          version: () => Effect.sync(() => {
+                              write("version_http=200"); write("version_valid=true"); write("version=7");
+                          }),
+                          observe: (phase: Phase) => <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+                              Effect.sync(() => write(`phase=${phase}:started`)).pipe(
+                                  Effect.andThen(effect),
+                                  Effect.onExit((exit) => Effect.sync(() => {
+                                      if (Exit.isSuccess(exit)) {
+                                          write(`phase=${phase}:passed`);
+                                      } else {
+                                          write(`phase=${phase}:${Cause.hasInterruptsOnly(exit.cause) ? "interrupted" : "failed"}`);
+                                          const failure = classify(exit.cause);
+                                          write(`reason=${failure.reason}`);
+                                          write(`http_status=${failure.http}`);
+                                      }
+                                  })),
+                              ),
+                          finish: (success: boolean) => Effect.sync(() => write(`diagnostic_complete=${success ? "true" : "false"}`)),
+                      };
+                  }
+
+                  export async function requireVersion7(response: Response): Promise<void> {
+                      const http = status(response.status);
+                      if (http !== 200 || response.body === null) {
+                          await response.body?.cancel().catch(() => undefined);
+                          throw new VersionFailure({ reason: "state_probe_unavailable", http });
+                      }
+                      const reader = response.body.getReader();
+                      const decoder = new TextDecoder("utf-8", { fatal: true });
+                      let size = 0, text = "";
+                      try {
+                          while (true) {
+                              const chunk = await reader.read();
+                              if (chunk.done) break;
+                              size += chunk.value.byteLength;
+                              if (size > 65536) throw new Error("Body limit exceeded.");
+                              text += decoder.decode(chunk.value, { stream: true });
+                          }
+                          text += decoder.decode();
+                          const value: unknown = JSON.parse(text);
+                          if (!record(value) || Object.keys(value).length !== 1 ||
+                              typeof value.version !== "number" || !Number.isInteger(value.version) ||
+                              value.version < 0 || value.version > 2147483647) {
+                              throw new Error("Invalid version shape.");
+                          }
+                          const decoded = decodeVersion(value);
+                          if (decoded.version !== 7) {
+                              throw new VersionFailure({ reason: "state_version_mismatch", http });
+                          }
+                      } catch (error) {
+                          throw error instanceof VersionFailure ? error :
+                              new VersionFailure({ reason: "state_probe_unavailable", http });
+                      } finally {
+                          await reader.cancel().catch(() => undefined);
+                          reader.releaseLock();
+                      }
+                  }
+
+                  export const publicVersion7 = Effect.tryPromise({
+                      try: async (signal) => {
+                          const controller = new AbortController();
+                          const abort = () => controller.abort();
+                          signal.addEventListener("abort", abort, { once: true });
+                          if (signal.aborted) abort();
+                          const timer = setTimeout(abort, 20_000);
+                          try {
+                              const response = await fetch("https://alchemy-state-store.nartchome.workers.dev/version", {
+                                  method: "GET", redirect: "error", credentials: "omit", signal: controller.signal,
+                                  headers: { Accept: "application/json" },
+                              });
+                              await requireVersion7(response);
+                          } finally {
+                              clearTimeout(timer);
+                              signal.removeEventListener("abort", abort);
+                          }
+                      },
+                      catch: (error) => error instanceof VersionFailure ? error :
+                          new VersionFailure({ reason: "state_probe_unavailable", http: 0 }),
+                  }).pipe(
+                      Effect.timeout("20 seconds"),
+                      Effect.mapError((error) => error instanceof VersionFailure ? error :
+                          new VersionFailure({ reason: "state_probe_unavailable", http: 0 })),
+                  );
+                  TS_SUPPORT
+                  cat > .generated-state-auth.test.ts <<'TS_PROBE'
+                  import { appendFileSync, closeSync, openSync } from "node:fs";
+                  import { isAbsolute } from "node:path";
+                  import * as Test from "alchemy/Test/Bun";
+                  import * as Cloudflare from "alchemy/Cloudflare";
+                  import * as State from "alchemy/State";
+                  import { AlchemyContext } from "alchemy/AlchemyContext";
+                  import * as Effect from "effect/Effect";
+                  import * as Exit from "effect/Exit";
+                  import * as Layer from "effect/Layer";
+                  import * as References from "effect/References";
+                  import * as FetchHttpClient from "effect/http/FetchHttpClient";
+                  import { makeReport, publicVersion7 } from "./.generated-state-support.ts";
+
+                  const path = process.env.KBPOD_STATE_REPORT;
+                  if (typeof path !== "string" || !isAbsolute(path)) {
+                      throw new Error("Invalid authored diagnostic report path.");
+                  }
+                  closeSync(openSync(path, "wx", 0o600));
+                  const report = makeReport((line) => appendFileSync(path, line));
+                  const state = Cloudflare.state().pipe(
+                      Layer.provide(Layer.succeed(FetchHttpClient.RequestInit, {
+                          redirect: "error", credentials: "omit",
+                      })),
+                  );
+                  const { test } = Test.make({
+                      providers: Cloudflare.providers(), state, profile: "kbpod-dev",
+                      dev: false, sidecar: false, adopt: false,
+                  });
+
+                  test("existing state authentication only", Effect.gen(function* () {
+                      yield* publicVersion7.pipe(Effect.tap(() => report.version()), report.observe("github_version"));
+                      yield* Effect.gen(function* () {
+                          const context = yield* AlchemyContext;
+                          if (context.updateStateStore !== false) {
+                              return yield* Effect.die(new Error("Native state updates must be disabled."));
+                          }
+                          yield* (yield* State.State); // initialize only; no state-resource operation or Stack
+                      }).pipe(report.observe("sdk_state"));
+                  }).pipe(
+                      Effect.timeout("150 seconds"),
+                      Effect.provideService(References.MinimumLogLevel, "None"),
+                      Effect.withTracerEnabled(false),
+                      Effect.onExit((exit) => report.finish(Exit.isSuccess(exit))),
+                  ), { timeout: 175_000 });
+                  TS_PROBE
+            - name: Probe existing state once
+              id: native
+              shell: bash
+              env:
+                  CLOUDFLARE_ACCOUNT_ID: 7cae6ad8270c12d5328aebe85fc0528a
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              run: |
+                  set +x
+                  ulimit -c 0
+                  set -euo pipefail
+                  fail() { printf '%s\n' '::error::Isolated diagnostic precondition failed.'; exit 1; }
+                  [[ "$ALCHEMY_HOME" == /* && "$KBPOD_STATE_REPORT" == /* ]] || fail
+                  for path in "$ALCHEMY_HOME" "$KBPOD_STATE_REPORT" .alchemy; do
+                      [[ ! -e "$path" && ! -L "$path" ]] || fail
+                  done
+                  for path in .env*; do
+                      [[ "$path" == .env.example ]] && continue
+                      [[ ! -e "$path" && ! -L "$path" ]] || fail
+                  done
+                  for path in "$KBPOD_EMPTY_PATH" "$KBPOD_USER_HOME"; do
+                      [[ -d "$path" && ! -L "$path" ]] || fail
+                      entries=$(find "$path" -mindepth 1 -maxdepth 1 -print -quit) || fail
+                      [[ -z "$entries" ]] || fail
+                  done
+                  [[ ! -w "$KBPOD_EMPTY_PATH" ]] || fail
+                  # HOSTED_PROCESS_BOUNDARY: fail closed without the required executable.
+                  [[ "$KBPOD_BUN" == /* && -x /usr/bin/timeout && -x "$KBPOD_BUN" ]] || fail
+                  [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] || fail
+                  unset CLOUDFLARE_ACCESS_CLIENT_ID CLOUDFLARE_ACCESS_CLIENT_SECRET
+                  unset CLOUDFLARE_API_KEY CLOUDFLARE_EMAIL
+                  unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+                  set +e
+                  /usr/bin/timeout --signal=TERM --kill-after=2s 180s /usr/bin/env \
+                      HOME="$KBPOD_USER_HOME" PATH="$KBPOD_EMPTY_PATH" \
+                      "$KBPOD_BUN" test ./.generated-state-auth.test.ts >/dev/null 2>&1
+                  code=$?
+                  set -e
+                  printf 'exit_code=%s\n' "$code" >> "$GITHUB_OUTPUT"
+                  exit "$code"
+            - name: Publish only validated authored evidence
+              if: always()
+              env:
+                  NATIVE_EXIT: ${{ steps.native.outputs.exit_code }}
+              run: |
+                  python3 -I - <<'PY'
+                  import os
+                  import pathlib
+                  import re
+                  import sys
+
+                  REASONS = frozenset((
+                      'state_probe_unavailable', 'state_version_mismatch', 'no_secrets_store',
+                      'preview_setup', 'preview_http', 'secret_read', 'state_auth_rejected',
+                      'access_blocked', 'prompt_required', 'auth_config', 'state_store', 'unknown',
+                  ))
+                  PREFIX = ['probe=state_auth', 'phase=github_version:started']
+                  VERSION = ['version_http=200', 'version_valid=true', 'version=7', 'phase=github_version:passed']
+                  SUCCESS = PREFIX + VERSION + ['phase=sdk_state:started', 'phase=sdk_state:passed', 'diagnostic_complete=true']
+
+
+                  def validate(raw):
+                      if len(raw) > 8192 or not raw.endswith(b'\n'):
+                          return None
+                      try:
+                          lines = raw.decode('ascii').split('\n')[:-1]
+                      except Exception:
+                          return None
+                      if '\r' in raw.decode('ascii'):
+                          return None
+                      if lines == SUCCESS:
+                          return lines
+                      for phase, prefix in [('github_version', PREFIX), ('sdk_state', PREFIX + VERSION + ['phase=sdk_state:started'])]:
+                          for outcome in ('failed', 'interrupted'):
+                              if len(lines) != len(prefix) + 4 or lines[:len(prefix)] != prefix:
+                                  continue
+                              tail = lines[len(prefix):]
+                              if tail[0] != 'phase=' + phase + ':' + outcome:
+                                  continue
+                              if tail[1] not in {'reason=' + reason for reason in REASONS}:
+                                  continue
+                              if re.fullmatch(r'http_status=(0|[1-5][0-9]{2})', tail[2]) is None:
+                                  continue
+                              if tail[3] == 'diagnostic_complete=false':
+                                  return lines
+                      return None
+
+
+                  def main():
+                      try:
+                          path = pathlib.Path(os.environ['KBPOD_STATE_REPORT'])
+                          if not path.is_absolute() or path.is_symlink() or not path.is_file():
+                              raise ValueError()
+                          with path.open('rb') as source:
+                              raw = source.read(8193)
+                          lines = validate(raw)
+                          if lines is None:
+                              raise ValueError()
+                          verified = os.environ.get('NATIVE_EXIT') == '0' and lines == SUCCESS
+                          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='ascii') as summary:
+                              summary.write('### Existing-state diagnostic\n\n```text\n' + '\n'.join(lines) + '\n```\n')
+                              summary.write('Verdict: verified (native exit0 and complete phases).\n' if verified else
+                                            'Verdict: NOT verified (native exit or phase evidence failed).\n')
+                              summary.write('State authentication only; not application deployment, removal or ownership evidence.\n')
+                          if verified:
+                              return 0
+                      except Exception:
+                          pass
+                      print('::error::State diagnostic not verified; stop without retry or cleanup.')
+                      return 1
+
+
+                  if __name__ == '__main__':
+                      sys.exit(main())
+                  PY
