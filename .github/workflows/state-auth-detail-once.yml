@@ -2,7 +2,7 @@ name: Existing state auth detail once
 
 on:
     push:
-        branches: [ci/state-auth-detail-once-40421549694]
+        branches: [cursor/bounded-nested-error-8d2f]
 
 permissions:
     contents: read
@@ -14,10 +14,10 @@ jobs:
     probe:
         if: >-
             github.repository == 'nartc/kbpod' &&
-            github.ref == 'refs/heads/ci/state-auth-detail-once-40421549694' &&
+            github.ref == 'refs/heads/cursor/bounded-nested-error-8d2f' &&
             github.event.created == true && github.event.deleted == false &&
             github.event.forced == false && github.run_attempt == '1' &&
-            github.actor == 'nartc' && github.triggering_actor == 'nartc'
+            github.actor == 'cursor[bot]' && github.triggering_actor == 'cursor[bot]'
         runs-on: ubuntu-24.04
         timeout-minutes: 5
         env:
@@ -170,10 +170,43 @@ jobs:
                       return "other";
                   }
 
+                  // One bounded line. Own-data only; getters stay unread. Token-like runs, then allowlist, then cap.
+                  export function boundSetupMessage(error: unknown): string {
+                      const ownData = (value: unknown, key: string): unknown => {
+                          if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+                          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+                          return descriptor && Object.hasOwn(descriptor, "value") ? descriptor.value : undefined;
+                      };
+                      const sanitize = (message: string): string => {
+                          let text = message.slice(0, 500);
+                          text = text.replace(/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "redacted");
+                          text = text.replace(
+                              /\b(?:bearer|token|secret|password|authorization|api[_-]?key|credential)s?\b\s*[:=]\s*\S+/gi,
+                              "redacted",
+                          );
+                          text = text.replace(/\b[Bb]earer\s+\S+/g, "redacted");
+                          text = text.replace(/[A-Fa-f0-9]{32,}/g, "redacted");
+                          text = text.replace(/[A-Za-z0-9_+/=-]{40,}/g, "redacted");
+                          text = text.replace(/[A-Za-z0-9_+/=-]*[0-9][A-Za-z0-9_+/=-]*/g, (run) =>
+                              run.length >= 16 ? "redacted" : run);
+                          text = text.replace(/[^A-Za-z0-9 .,;:'()_/-]/g, " ");
+                          text = text.replace(/ {2,}/g, " ").trim();
+                          if (text.length > 120) text = text.slice(0, 120).trim();
+                          return text.length === 0 ? "unavailable" : text;
+                      };
+                      try {
+                          const message = ownData(ownData(error, "cause"), "message");
+                          if (typeof message !== "string") return "unavailable";
+                          return sanitize(message);
+                      } catch {
+                          return "unavailable";
+                      }
+                  }
+
                   export function makeReport(append: (line: string) => void) {
                       let bytes = 0;
                       const write = (line: string) => {
-                          bytes += line.length + 1; // every generated line is fixed ASCII
+                          bytes += line.length + 1; // every generated line is bounded ASCII
                           if (bytes > 8192) throw new Error("Diagnostic report limit exceeded.");
                           append(line + "\n");
                       };
@@ -195,7 +228,12 @@ jobs:
                                           write(`http_status=${failure.http}`);
                                           if (phase === "sdk_state" && failure.reason === "preview_setup" &&
                                               !Cause.hasInterruptsOnly(exit.cause)) {
-                                              write(`setup_cause=${setupCause(Cause.squash(exit.cause))}`);
+                                              const squashed = Cause.squash(exit.cause);
+                                              const setup = setupCause(squashed);
+                                              write(`setup_cause=${setup}`);
+                                              if (setup === "rejected") {
+                                                  write(`setup_message=${boundSetupMessage(squashed)}`);
+                                              }
                                           }
                                       }
                                   })),
@@ -390,7 +428,7 @@ jobs:
                           return lines
                       for phase, prefix in [('github_version', PREFIX), ('sdk_state', PREFIX + VERSION + ['phase=sdk_state:started'])]:
                           for outcome in ('failed', 'interrupted'):
-                              if len(lines) not in (len(prefix) + 4, len(prefix) + 5) or lines[:len(prefix)] != prefix:
+                              if len(lines) not in (len(prefix) + 4, len(prefix) + 5, len(prefix) + 6) or lines[:len(prefix)] != prefix:
                                   continue
                               tail = lines[len(prefix):]
                               if tail[0] != 'phase=' + phase + ':' + outcome:
@@ -398,10 +436,14 @@ jobs:
                               if tail[1] not in {'reason=' + reason for reason in REASONS}:
                                   continue
                               if tail[1] == 'reason=preview_setup':
-                                  if (phase == 'sdk_state' and outcome == 'failed' and len(tail) == 5 and
-                                      tail[2] == 'http_status=0' and
-                                      tail[3] in {'setup_cause=' + value for value in SETUP_CAUSES} and
-                                      tail[4] == 'diagnostic_complete=false'):
+                                  setup_line = tail[3] if len(tail) > 3 else ''
+                                  message_ok = re.fullmatch(
+                                      r"setup_message=[A-Za-z0-9 .,;:'()_/-]{1,120}", tail[4],
+                                  ) is not None if len(tail) == 6 else False
+                                  if (phase == 'sdk_state' and outcome == 'failed' and
+                                      tail[2] == 'http_status=0' and tail[-1] == 'diagnostic_complete=false' and
+                                      setup_line in {'setup_cause=' + value for value in SETUP_CAUSES} and
+                                      (len(tail) == 5 or (len(tail) == 6 and setup_line == 'setup_cause=rejected' and message_ok))):
                                       return lines
                                   continue
                               if len(tail) != 4:
